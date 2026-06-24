@@ -9,6 +9,8 @@ import pytest
 
 from cadence.commands.deps import CommandDeps
 from cadence.commands.playback import (
+    handle_forceplay,
+    handle_move,
     handle_pause,
     handle_play,
     handle_resume,
@@ -16,6 +18,7 @@ from cadence.commands.playback import (
     handle_stop,
 )
 from cadence.interfaces import ResolvedTrack
+from cadence.state import QUEUE_LIMIT, Track
 from tests.fakes import (
     FakeAudioSource,
     FakeGuild,
@@ -272,3 +275,118 @@ async def test_stop_delegates_to_player(command_deps: CommandDeps) -> None:
 
     assert player.stop_calls == [guild]
     assert interaction.responses[0].content == "⏹️ Stopped and left the channel."
+
+
+@pytest.mark.asyncio
+async def test_play_rejects_full_queue_before_defer(command_deps: CommandDeps) -> None:
+    guild = FakeGuild(id=1)
+    voice_channel = FakeVoiceChannel(id=2, guild=guild)
+    voice_client = FakeVoiceClient(channel=voice_channel)
+    voice_client.play("existing")
+    guild.voice_client = voice_client
+    interaction = _interaction(guild, voice_channel=voice_channel)
+    player = cast(FakePlayer, command_deps.player)
+    player.snapshot_current = Track(title="Now", webpage_url="https://example.com", requested_by=1)
+    player.snapshot_upcoming = [
+        Track(
+            title=f"Q{index}",
+            webpage_url=f"https://example.com/{index}",
+            requested_by=1,
+        )
+        for index in range(QUEUE_LIMIT)
+    ]
+    source = cast(FakeAudioSource, command_deps.source)
+
+    await handle_play(cast(discord.Interaction, interaction), "another", command_deps)
+
+    assert interaction.deferred == []
+    assert interaction.responses[0].ephemeral is True
+    assert "Queue is full" in interaction.responses[0].content
+    assert source.fetch_calls == []
+
+
+@pytest.mark.asyncio
+async def test_forceplay_resets_lineup_and_starts(command_deps: CommandDeps) -> None:
+    guild = FakeGuild(id=1)
+    voice_channel = FakeVoiceChannel(id=2, guild=guild)
+    interaction = _interaction(guild, voice_channel=voice_channel)
+    player = cast(FakePlayer, command_deps.player)
+    source = cast(FakeAudioSource, command_deps.source)
+    source.fetch_results.append(
+        ResolvedTrack(
+            title="Forced",
+            webpage_url="https://example.com/watch?v=9",
+            stream_url="https://stream.example/audio9",
+        )
+    )
+
+    await handle_forceplay(cast(discord.Interaction, interaction), "forced", command_deps)
+
+    assert player.reset_lineup_calls == [guild]
+    assert len(player.enqueued) == 1
+    assert player.enqueued[0][1].title == "Forced"
+    assert player.play_next_calls == [guild]
+    assert interaction.followups[0].content == "▶️ Now playing: **Forced**"
+
+
+@pytest.mark.asyncio
+async def test_forceplay_when_active_stops_without_play_next(command_deps: CommandDeps) -> None:
+    guild = FakeGuild(id=1)
+    voice_channel = FakeVoiceChannel(id=2, guild=guild)
+    voice_client = FakeVoiceClient(channel=voice_channel)
+    voice_client.play("existing")
+    guild.voice_client = voice_client
+    interaction = _interaction(guild, voice_channel=voice_channel)
+    player = cast(FakePlayer, command_deps.player)
+    source = cast(FakeAudioSource, command_deps.source)
+    source.fetch_results.append(
+        ResolvedTrack(
+            title="Forced",
+            webpage_url="https://example.com/watch?v=9",
+            stream_url="https://stream.example/audio9",
+        )
+    )
+
+    await handle_forceplay(cast(discord.Interaction, interaction), "forced", command_deps)
+
+    assert player.reset_lineup_calls == [guild]
+    assert player.play_next_calls == []
+
+
+@pytest.mark.asyncio
+async def test_move_joins_when_not_connected(command_deps: CommandDeps) -> None:
+    guild = FakeGuild(id=1)
+    voice_channel = FakeVoiceChannel(id=2, guild=guild, name="Lobby")
+    interaction = _interaction(guild, voice_channel=voice_channel)
+
+    await handle_move(cast(discord.Interaction, interaction), command_deps)
+
+    assert guild.voice_client is not None
+    assert interaction.responses[0].content == "Joined **Lobby**."
+
+
+@pytest.mark.asyncio
+async def test_move_moves_when_connected_elsewhere(command_deps: CommandDeps) -> None:
+    guild = FakeGuild(id=1)
+    old_channel = FakeVoiceChannel(id=2, guild=guild)
+    new_channel = FakeVoiceChannel(id=3, guild=guild, name="Stage")
+    voice_client = FakeVoiceClient(channel=old_channel)
+    guild.voice_client = voice_client
+    interaction = _interaction(guild, voice_channel=new_channel)
+
+    await handle_move(cast(discord.Interaction, interaction), command_deps)
+
+    assert voice_client.move_to_calls == [new_channel]
+    assert interaction.responses[0].content == "Moved to **Stage**."
+
+
+@pytest.mark.asyncio
+async def test_move_requires_voice_channel(command_deps: CommandDeps) -> None:
+    guild = FakeGuild(id=1)
+    interaction = _interaction(guild, voice_channel=None)
+
+    await handle_move(cast(discord.Interaction, interaction), command_deps)
+
+    assert interaction.responses[0].ephemeral is True
+    assert "voice channel" in interaction.responses[0].content
+

@@ -14,12 +14,16 @@ __all__ = ["CommandDeps", "register"]
 COMMAND_NAMES = frozenset(
     {
         "play",
+        "forceplay",
+        "move",
         "skip",
         "pause",
         "resume",
         "stop",
         "queue",
         "nowplaying",
+        "remove",
+        "clear",
         "loop",
         "volume",
     }

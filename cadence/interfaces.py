@@ -43,6 +43,22 @@ class Player(Protocol):
         """Append a track to the guild queue."""
         ...
 
+    async def clear_queue(self, guild: discord.Guild) -> int:
+        """Clear upcoming tracks without stopping the current song. Returns count removed."""
+        ...
+
+    def reset_lineup(self, guild: discord.Guild) -> None:
+        """Clear the queue, disable loop, and reset the current track."""
+        ...
+
+    async def remove_at(self, guild: discord.Guild, position: int) -> Track:
+        """Remove a track by queue position (0 = now playing, 1+ = upcoming)."""
+        ...
+
+    async def interrupt(self, guild: discord.Guild) -> bool:
+        """Clear queue, disable loop, and stop playback. Returns True if voice was active."""
+        ...
+
     async def play_next(self, guild: discord.Guild, *, announce: bool = True) -> None:
         """Play the next track for a guild.
 

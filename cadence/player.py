@@ -10,9 +10,13 @@ from typing import cast
 import discord
 
 from cadence.interfaces import AudioSource
-from cadence.state import StateStore, Track
+from cadence.state import QUEUE_LIMIT, StateStore, Track
 
-__all__ = ["FFMPEG_OPTS", "Player"]
+__all__ = ["FFMPEG_OPTS", "Player", "QueueFullError"]
+
+
+class QueueFullError(Exception):
+    """Raised when the guild queue has reached QUEUE_LIMIT."""
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +46,70 @@ class Player:
 
     async def enqueue(self, guild: discord.Guild, track: Track) -> None:
         """Append a track to the guild queue."""
-        self._store.get(guild.id).queue.append(track)
+        state = self._store.get(guild.id)
+        if len(state.queue) >= QUEUE_LIMIT:
+            raise QueueFullError
+        state.queue.append(track)
+
+    def reset_lineup(self, guild: discord.Guild) -> None:
+        """Clear the queue, disable loop, and reset the current track."""
+        state = self._store.get(guild.id)
+        state.queue.clear()
+        state.loop = False
+        state.current = None
+
+    async def clear_queue(self, guild: discord.Guild) -> int:
+        """Clear upcoming tracks without stopping the current song. Returns count removed."""
+        state = self._store.get(guild.id)
+        count = len(state.queue)
+        state.queue.clear()
+        return count
+
+    async def remove_at(self, guild: discord.Guild, position: int) -> Track:
+        """Remove a track by 1-based display position (see /queue)."""
+        state = self._store.get(guild.id)
+        if position < 1:
+            msg = f"Invalid queue position: {position}"
+            raise ValueError(msg)
+
+        if state.current is not None:
+            if position == 1:
+                track = state.current
+                state.current = None
+                voice_client = guild.voice_client
+                if voice_client is not None:
+                    cast(discord.VoiceClient, voice_client).stop()
+                return track
+            queue_index = position - 2
+            max_position = 1 + len(state.queue)
+        else:
+            queue_index = position - 1
+            max_position = len(state.queue)
+
+        if position > max_position or queue_index < 0:
+            msg = f"No track at position {position}"
+            raise ValueError(msg)
+        if state.current is not None and position > QUEUE_LIMIT + 1:
+            msg = f"Invalid queue position: {position}"
+            raise ValueError(msg)
+
+        queue_list = list(state.queue)
+        removed = queue_list.pop(queue_index)
+        state.queue.clear()
+        state.queue.extend(queue_list)
+        return removed
+
+    async def interrupt(self, guild: discord.Guild) -> bool:
+        """Clear queue, disable loop, and stop playback. Returns True if voice was active."""
+        self.reset_lineup(guild)
+        voice_client = guild.voice_client
+        if voice_client is None:
+            return False
+        vc = cast(discord.VoiceClient, voice_client)
+        if vc.is_playing() or vc.is_paused():
+            vc.stop()
+            return True
+        return False
 
     async def play_next(self, guild: discord.Guild, *, announce: bool = True) -> None:
         """Play the next track for a guild."""

@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 
 import discord
 
-__all__ = ["GuildState", "StateStore", "Track"]
+QUEUE_LIMIT = 30
+
+__all__ = ["QUEUE_LIMIT", "GuildState", "StateStore", "Track"]
 
 
 @dataclass(frozen=True, slots=True)

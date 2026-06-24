@@ -8,7 +8,7 @@ import discord
 import pytest
 
 from cadence.commands.playback import handle_pause, handle_play, handle_resume
-from cadence.commands.queue import MAX_QUEUE_DISPLAY, handle_nowplaying, handle_queue
+from cadence.commands.queue import handle_nowplaying, handle_queue
 from cadence.commands.settings import handle_loop, handle_volume
 from tests.fakes import FakeVoiceClient
 from tests.integration.acceptance_helpers import (
@@ -55,32 +55,31 @@ async def test_us5_t3_05_queue_and_nowplaying_during_playback(
     await handle_nowplaying(cast(discord.Interaction, nowplaying_interaction), ctx.deps)
 
     queue_content = queue_interaction.responses[0].content
-    assert "▶️ Now playing: **Current**" in queue_content
-    assert "1. **Up One**" in queue_content
-    assert "2. **Up Two**" in queue_content
+    assert "1. ▶️ Now playing: **Current**" in queue_content
+    assert "2. **Up One**" in queue_content
+    assert "3. **Up Two**" in queue_content
     assert nowplaying_interaction.responses[0].content == "▶️ **Current** (<@42>)"
 
 
 @pytest.mark.asyncio
-async def test_us5_t3_05_queue_truncates_long_lists(acceptance_ctx: AcceptanceContext) -> None:
-    """US-5 / T3-05: long queues truncate with a +N more note."""
+async def test_us5_queue_full_blocks_enqueue(acceptance_ctx: AcceptanceContext) -> None:
+    """US-5: /play refuses to enqueue when the queue already has QUEUE_LIMIT tracks."""
+    from cadence.state import QUEUE_LIMIT
+
     ctx = acceptance_ctx
-    titles = ["Current"] + [f"Track {index}" for index in range(MAX_QUEUE_DISPLAY + 3)]
-    script_play_flow(ctx, *titles)
+    script_play_flow(ctx, "Current", *[f"Track {index}" for index in range(QUEUE_LIMIT)])
     play_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
     await handle_play(cast(discord.Interaction, play_interaction), "current", ctx.deps)
 
-    for title in titles[1:]:
+    for index in range(QUEUE_LIMIT):
         extra = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
-        await handle_play(cast(discord.Interaction, extra), title.lower(), ctx.deps)
+        await handle_play(cast(discord.Interaction, extra), f"track {index}", ctx.deps)
 
-    queue_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
-    await handle_queue(cast(discord.Interaction, queue_interaction), ctx.deps)
+    full_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
+    await handle_play(cast(discord.Interaction, full_interaction), "one more", ctx.deps)
 
-    content = queue_interaction.responses[0].content
-    assert "+3 more" in content
-    assert f"{MAX_QUEUE_DISPLAY}. **Track {MAX_QUEUE_DISPLAY - 1}**" in content
-    assert f"{MAX_QUEUE_DISPLAY + 1}." not in content
+    assert full_interaction.responses[0].ephemeral is True
+    assert "Queue is full" in full_interaction.responses[0].content
 
 
 @pytest.mark.asyncio

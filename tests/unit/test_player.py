@@ -514,3 +514,152 @@ async def test_play_next_no_voice_client_is_noop(
     await player.play_next(guild)
 
     assert source.resolve_calls == []
+
+
+@pytest.mark.asyncio
+async def test_enqueue_raises_when_queue_full(
+    fake_guild: FakeGuild,
+) -> None:
+    """enqueue raises QueueFullError at QUEUE_LIMIT."""
+    from cadence.player import QueueFullError
+    from cadence.state import QUEUE_LIMIT
+
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    for index in range(QUEUE_LIMIT):
+        state.queue.append(
+            Track(title=f"T{index}", webpage_url=f"https://example.com/{index}", requested_by=1)
+        )
+    track = Track(title="Overflow", webpage_url="https://overflow.example", requested_by=1)
+
+    with pytest.raises(QueueFullError):
+        await player.enqueue(guild, track)
+
+
+@pytest.mark.asyncio
+async def test_clear_queue_preserves_current(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+) -> None:
+    """clear_queue empties upcoming tracks but leaves current playing."""
+    _ = fake_voice_client
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    current = Track(title="Now", webpage_url="https://now.example", requested_by=1)
+    state.current = current
+    state.queue.append(Track(title="Next", webpage_url="https://next.example", requested_by=1))
+
+    count = await player.clear_queue(guild)
+
+    assert count == 1
+    assert state.current is current
+    assert list(state.queue) == []
+
+
+@pytest.mark.asyncio
+async def test_remove_at_position_one_clears_without_voice(
+    fake_guild: FakeGuild,
+) -> None:
+    """remove_at(1) clears current even when not connected to voice."""
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    state.current = Track(title="Now", webpage_url="https://now.example", requested_by=1)
+    fake_guild.voice_client = None
+
+    removed = await player.remove_at(guild, 1)
+
+    assert removed.title == "Now"
+    assert state.current is None
+
+
+@pytest.mark.asyncio
+async def test_remove_at_position_one_stops_voice(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+) -> None:
+    """remove_at(1) stops the voice client when connected."""
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    state.current = Track(title="Now", webpage_url="https://now.example", requested_by=1)
+    fake_voice_client.play("source")
+
+    removed = await player.remove_at(guild, 1)
+
+    assert removed.title == "Now"
+    assert state.current is None
+    assert fake_voice_client._playing is False
+
+
+@pytest.mark.asyncio
+async def test_remove_at_position_n_removes_from_queue(
+    fake_guild: FakeGuild,
+) -> None:
+    """remove_at(N) removes the Nth upcoming track."""
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    one = Track(title="One", webpage_url="https://one.example", requested_by=1)
+    two = Track(title="Two", webpage_url="https://two.example", requested_by=1)
+    state.queue.extend([one, two])
+
+    removed = await player.remove_at(guild, 2)
+
+    assert removed.title == "Two"
+    assert list(state.queue) == [one]
+
+
+@pytest.mark.asyncio
+async def test_interrupt_clears_and_stops(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+) -> None:
+    """interrupt clears queue, disables loop, and stops active playback."""
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    state.loop = True
+    state.current = Track(title="Now", webpage_url="https://now.example", requested_by=1)
+    state.queue.append(Track(title="Next", webpage_url="https://next.example", requested_by=1))
+    fake_voice_client.play("source")
+
+    was_active = await player.interrupt(guild)
+
+    assert was_active is True
+    assert state.loop is False
+    assert state.current is None
+    assert list(state.queue) == []
+
+
+@pytest.mark.asyncio
+async def test_remove_at_invalid_position_raises(
+    fake_guild: FakeGuild,
+) -> None:
+    """remove_at raises ValueError for out-of-range positions."""
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    state.queue.append(Track(title="One", webpage_url="https://one.example", requested_by=1))
+
+    with pytest.raises(ValueError, match="No track at position"):
+        await player.remove_at(guild, 5)
+
+    state.queue.clear()
+    with pytest.raises(ValueError, match="No track at position"):
+        await player.remove_at(guild, 1)
+
+
+@pytest.mark.asyncio
+async def test_interrupt_idle_returns_false(
+    fake_guild: FakeGuild,
+) -> None:
+    """interrupt returns False when voice is not active."""
+    player, _, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+
+    was_active = await player.interrupt(guild)
+
+    assert was_active is False

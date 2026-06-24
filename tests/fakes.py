@@ -11,6 +11,7 @@ import discord
 import pytest
 
 from cadence.interfaces import ResolvedTrack
+from cadence.player import QueueFullError
 from cadence.state import Track
 
 __all__ = [
@@ -67,6 +68,7 @@ class FakeVoiceChannel:
 
     id: int
     guild: FakeGuild
+    name: str = "voice"
 
     async def connect(self, **kwargs: Any) -> FakeVoiceClient:
         client = FakeVoiceClient(channel=self)
@@ -276,9 +278,53 @@ class FakePlayer:
     stop_calls: list[discord.Guild] = field(default_factory=list)
     loop_calls: list[tuple[discord.Guild, bool]] = field(default_factory=list)
     volume_calls: list[tuple[discord.Guild, int]] = field(default_factory=list)
+    interrupt_calls: list[discord.Guild] = field(default_factory=list)
+    reset_lineup_calls: list[discord.Guild] = field(default_factory=list)
+    clear_queue_calls: list[discord.Guild] = field(default_factory=list)
+    remove_at_calls: list[tuple[discord.Guild, int]] = field(default_factory=list)
+    queue_full: bool = False
+    interrupt_returns: bool = False
+
+    def reset_lineup(self, guild: discord.Guild) -> None:
+        self.reset_lineup_calls.append(guild)
+        self.snapshot_upcoming = []
+        self.snapshot_current = None
+        self.loop_enabled = False
 
     async def enqueue(self, guild: discord.Guild, track: Track) -> None:
+        if self.queue_full:
+            raise QueueFullError
         self.enqueued.append((guild, track))
+
+    async def clear_queue(self, guild: discord.Guild) -> int:
+        self.clear_queue_calls.append(guild)
+        count = len(self.snapshot_upcoming)
+        self.snapshot_upcoming = []
+        return count
+
+    async def remove_at(self, guild: discord.Guild, position: int) -> Track:
+        self.remove_at_calls.append((guild, position))
+        if self.snapshot_current is not None:
+            if position == 1:
+                track = self.snapshot_current
+                self.snapshot_current = None
+                self.skip_calls.append(guild)
+                return track
+            queue_index = position - 2
+            upcoming = self.snapshot_upcoming
+        else:
+            queue_index = position - 1
+            upcoming = self.snapshot_upcoming
+
+        if queue_index < 0 or queue_index >= len(upcoming):
+            msg = f"No track at position {position}"
+            raise ValueError(msg)
+        return upcoming.pop(queue_index)
+
+    async def interrupt(self, guild: discord.Guild) -> bool:
+        self.interrupt_calls.append(guild)
+        self.snapshot_upcoming = []
+        return self.interrupt_returns
 
     async def play_next(self, guild: discord.Guild, *, announce: bool = True) -> None:
         _ = announce

@@ -48,7 +48,7 @@ async def test_build_app_on_ready_syncs_commands() -> None:
     sync_commands.assert_awaited_once()
 
 
-def test_build_app_wires_nine_commands_and_youtube_player() -> None:
+def test_build_app_wires_thirteen_commands_and_youtube_player() -> None:
     settings = Settings(
         token="test-token",
         guild_id=None,
@@ -65,7 +65,7 @@ def test_build_app_wires_nine_commands_and_youtube_player() -> None:
     tree, deps = mock_register.call_args.args
     names = {command.name for command in tree.get_commands()}
     assert names == set(COMMAND_NAMES)
-    assert len(tree.get_commands()) == 9
+    assert len(tree.get_commands()) == 13
     assert isinstance(deps.source, YouTubeSource)
     assert isinstance(deps.player, Player)
     assert deps.player._source is deps.source

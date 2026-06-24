@@ -28,6 +28,7 @@ __all__ = ["run_after", "settings"]
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear Cadence env vars before each test."""
+    monkeypatch.setattr("cadence.config.load_dotenv", lambda *_args, **_kwargs: None)
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
     monkeypatch.delenv("DISCORD_GUILD_ID", raising=False)
     monkeypatch.delenv("LOG_LEVEL", raising=False)

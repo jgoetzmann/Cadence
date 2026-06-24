@@ -43,6 +43,21 @@ class _ConcretePlayer:
     async def enqueue(self, guild: object, track: Track) -> None:
         _ = (guild, track)
 
+    async def clear_queue(self, guild: object) -> int:
+        _ = guild
+        return 0
+
+    def reset_lineup(self, guild: object) -> None:
+        _ = guild
+
+    async def remove_at(self, guild: object, position: int) -> Track:
+        _ = (guild, position)
+        return Track(title="X", webpage_url="https://example.com", requested_by=1)
+
+    async def interrupt(self, guild: object) -> bool:
+        _ = guild
+        return False
+
     async def play_next(self, guild: object, *, announce: bool = True) -> None:
         _ = (guild, announce)
 
