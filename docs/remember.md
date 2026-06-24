@@ -88,6 +88,12 @@ Problem → solution format. Append as you discover more.
   include the reconnect flags and `options` include `-vn` (audio only).
 - **Search returns a playlist/odd result** → yt-dlp wraps results under `entries`;
   unwrap and filter falsy entries before indexing (G-201).
+- **Acceptance tests see "added to queue" after idle drain** → `FakeVoiceClient`
+  must clear `_playing` when `run_after()` simulates a natural track end; otherwise
+  `_is_playback_active` stays true (G-205).
+- **`play_next` not observed after `/skip` in async tests** → `stop()` fires the
+  FFmpeg `after` callback synchronously; patch `run_coroutine_threadsafe` to
+  `ensure_future` and await the captured futures (same pattern as `advance_after`).
 
 ---
 
@@ -137,6 +143,19 @@ Problem → solution format. Append as you discover more.
   before treating the result as a single video.
 - **G-202** (seed) Setting `source_address="0.0.0.0"` in `YTDL_OPTS` forces IPv4 and
   avoids intermittent extraction hangs on dual-stack hosts.
+- **G-203** Command handlers call `interaction.response.defer()` (not a top-level
+  `interaction.defer()`). `FakeInteractionResponse` must implement `defer()` and
+  `FakeInteraction` must expose a `channel` attribute for `/play` text-channel wiring.
+- **G-204** When `/play` starts idle playback it replies via interaction followup
+  (`overview.md §7`). Call `play_next(guild, announce=False)` so the engine does not
+  also post a duplicate "now playing" to the text channel.
+- **G-205** Acceptance tests: `run_after()` must set `FakeVoiceClient._playing =
+  False` before invoking the `after` callback so command-layer `_is_playback_active`
+  matches a naturally finished track.
+- **G-206** Acceptance harness lives in `tests/integration/acceptance_helpers.py`
+  with an async `acceptance_ctx` fixture in `conftest.py` (uses
+  `asyncio.get_running_loop()` — do not call `get_event_loop()` in a sync fixture).
+  T3 owns `test_acceptance_*.py`; T2 owns `test_playback_flow.py`.
 
 ---
 
