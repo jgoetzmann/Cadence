@@ -7,6 +7,7 @@ import threading
 import pytest
 
 from cadence.sources import youtube as youtube_module
+from cadence.state import LoopMode
 from tests.fakes import FakeGuild, FakeTextChannel, FakeVoiceClient, FakeYoutubeDL, ytdl_entry
 from tests.integration.helpers import (
     advance_after,
@@ -101,7 +102,7 @@ async def test_loop_re_resolves_stream_url_each_cycle(
     state = store.get(fake_guild.id)
     state.text_channel = text_channel
     state.current = track
-    state.loop = True
+    state.loop_mode = LoopMode.TRACK
 
     await player.play_next(guild)
     await advance_after(fake_voice_client)

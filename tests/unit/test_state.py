@@ -6,7 +6,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from cadence.state import GuildState, StateStore, Track
+from cadence.state import GuildState, LoopMode, StateStore, Track, reset_idle_activity
 
 
 def test_track_is_immutable() -> None:
@@ -37,10 +37,14 @@ def test_guild_state_defaults() -> None:
     state = GuildState()
     assert len(state.queue) == 0
     assert state.current is None
-    assert state.loop is False
+    assert state.loop_mode is LoopMode.OFF
     assert state.volume == 50
     assert state.text_channel is None
     assert state.voice_source is None
+    assert state.idle_minutes == 10
+    assert state.last_command_at is None
+    assert state.last_song_started_at is None
+    assert state.alone_since is None
 
 
 def test_guild_state_volume_from_store_default() -> None:
@@ -83,6 +87,34 @@ def test_state_store_discard_and_reget_uses_default_volume() -> None:
     store.discard(1)
     state = store.get(1)
     assert state.volume == 35
+
+
+def test_reset_idle_activity_clears_timestamps_and_default_minutes() -> None:
+    state = GuildState(
+        idle_minutes=99,
+        last_command_at=1.0,
+        last_song_started_at=2.0,
+        alone_since=3.0,
+    )
+    reset_idle_activity(state)
+    assert state.idle_minutes == 10
+    assert state.last_command_at is None
+    assert state.last_song_started_at is None
+    assert state.alone_since is None
+
+
+def test_state_store_peek_does_not_create_entry() -> None:
+    store = StateStore()
+    assert store.peek(99) is None
+    store.get(99)
+    assert store.peek(99) is not None
+
+
+def test_state_store_guild_ids() -> None:
+    store = StateStore()
+    store.get(1)
+    store.get(2)
+    assert set(store.guild_ids()) == {1, 2}
 
 
 def test_guild_state_queue_is_mutable() -> None:

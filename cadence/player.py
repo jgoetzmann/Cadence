@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+from collections import deque
 from collections.abc import Callable
 from typing import cast
 
 import discord
 
 from cadence.interfaces import AudioSource
-from cadence.state import QUEUE_LIMIT, StateStore, Track
+from cadence.state import (
+    QUEUE_LIMIT,
+    LoopMode,
+    StateStore,
+    Track,
+    reset_idle_activity,
+)
 
 __all__ = ["FFMPEG_OPTS", "Player", "QueueFullError"]
 
@@ -39,10 +47,13 @@ class Player:
         client: discord.Client,
         store: StateStore,
         source: AudioSource,
+        *,
+        on_song_started: Callable[[int], None] | None = None,
     ) -> None:
         self._client = client
         self._store = store
         self._source = source
+        self._on_song_started = on_song_started
 
     async def enqueue(self, guild: discord.Guild, track: Track) -> None:
         """Append a track to the guild queue."""
@@ -55,7 +66,7 @@ class Player:
         """Clear the queue, disable loop, and reset the current track."""
         state = self._store.get(guild.id)
         state.queue.clear()
-        state.loop = False
+        state.loop_mode = LoopMode.OFF
         state.current = None
 
     async def clear_queue(self, guild: discord.Guild) -> int:
@@ -120,8 +131,21 @@ class Player:
         vc = cast(discord.VoiceClient, voice_client)
 
         fresh = False
-        if state.loop and state.current is not None:
-            track = state.current
+        finished = state.current
+
+        if state.loop_mode == LoopMode.TRACK and finished is not None:
+            track = finished
+        elif (
+            state.loop_mode in (LoopMode.QUEUE, LoopMode.QUEUE_SHUFFLE)
+            and finished is not None
+        ):
+            self._requeue_finished(finished, state)
+            if state.queue:
+                track = state.queue.popleft()
+                state.current = track
+                fresh = True
+            else:
+                track = finished
         elif state.queue:
             track = state.queue.popleft()
             state.current = track
@@ -147,18 +171,21 @@ class Player:
         voice_source = self._build_voice_source(resolved.stream_url, state.volume)
         state.voice_source = voice_source
         vc.play(voice_source, after=self._make_after(guild))
+        if self._on_song_started is not None:
+            self._on_song_started(guild.id)
 
         if fresh and announce and state.text_channel is not None:
             await state.text_channel.send(f"▶️ Now playing: **{track.title}**")
 
     async def skip(self, guild: discord.Guild) -> None:
-        """Skip the current track and advance."""
+        """Skip the current track and advance like a natural end-of-track."""
         state = self._store.get(guild.id)
         voice_client = guild.voice_client
         if voice_client is None:
             return
         vc = cast(discord.VoiceClient, voice_client)
-        state.current = None
+        if state.loop_mode == LoopMode.TRACK:
+            state.loop_mode = LoopMode.OFF
         vc.stop()
 
     async def pause(self, guild: discord.Guild) -> None:
@@ -184,17 +211,18 @@ class Player:
         state = self._store.get(guild.id)
         state.queue.clear()
         state.current = None
-        state.loop = False
+        state.loop_mode = LoopMode.OFF
         state.voice_source = None
+        reset_idle_activity(state)
         voice_client = guild.voice_client
         if voice_client is not None:
             vc = cast(discord.VoiceClient, voice_client)
             vc.stop()
             await vc.disconnect(force=False)
 
-    def set_loop(self, guild: discord.Guild, *, enabled: bool) -> None:
-        """Set whether the current track should loop."""
-        self._store.get(guild.id).loop = enabled
+    def set_loop_mode(self, guild: discord.Guild, mode: LoopMode) -> None:
+        """Set the guild loop mode."""
+        self._store.get(guild.id).loop_mode = mode
 
     def set_volume(self, guild: discord.Guild, level: int) -> None:
         """Set playback volume for a guild (0–100)."""
@@ -208,6 +236,31 @@ class Player:
         """Return the current track and a copy of upcoming queue items."""
         state = self._store.get(guild.id)
         return state.current, list(state.queue)
+
+    def _requeue_finished(self, track: Track, state: object) -> None:
+        from cadence.state import GuildState
+
+        if not isinstance(state, GuildState):
+            return
+        if state.loop_mode == LoopMode.QUEUE:
+            self._requeue_track_queue(track, state.queue)
+        elif state.loop_mode == LoopMode.QUEUE_SHUFFLE:
+            self._requeue_track_shuffle(track, state.queue)
+
+    @staticmethod
+    def _requeue_track_queue(track: Track, queue: deque[Track]) -> None:
+        queue.append(track)
+
+    @staticmethod
+    def _requeue_track_shuffle(track: Track, queue: deque[Track]) -> None:
+        if queue:
+            insert_at = random.randint(1, len(queue))
+            queue_list = list(queue)
+            queue_list.insert(insert_at, track)
+            queue.clear()
+            queue.extend(queue_list)
+        else:
+            queue.appendleft(track)
 
     def _build_voice_source(
         self,

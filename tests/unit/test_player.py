@@ -14,7 +14,7 @@ import pytest
 
 from cadence.interfaces import ResolvedTrack
 from cadence.player import Player
-from cadence.state import StateStore, Track
+from cadence.state import LoopMode, StateStore, Track
 from tests.fakes import (
     FakeAudioSource,
     FakeGuild,
@@ -174,7 +174,7 @@ async def test_play_next_loop_replays_without_now_playing(
         requested_by=1,
     )
     state.current = track
-    state.loop = True
+    state.loop_mode = LoopMode.TRACK
     source.resolve_results = deque([resolved_track_for(track)])
 
     await player.play_next(guild)
@@ -299,12 +299,12 @@ async def test_after_logs_playback_error(
 
 
 @pytest.mark.asyncio
-async def test_skip_clears_current_and_bypasses_loop(
+async def test_skip_disables_track_loop_and_advances(
     fake_guild: FakeGuild,
     fake_voice_client: FakeVoiceClient,
     patch_voice_source: None,
 ) -> None:
-    """C2-03/04: skip clears current so loop is bypassed for one transition."""
+    """Skip on track loop turns loop off and plays the next queued item."""
     _ = fake_voice_client
     player, store, source, _ = make_player()
     guild = guild_as_discord(fake_guild)
@@ -312,7 +312,7 @@ async def test_skip_clears_current_and_bypasses_loop(
     nxt = Track(title="Next", webpage_url="https://next.example", requested_by=2)
     state = store.get(fake_guild.id)
     state.current = current
-    state.loop = True
+    state.loop_mode = LoopMode.TRACK
     state.queue.append(nxt)
     source.resolve_results = deque([resolved_track_for(current), resolved_track_for(nxt)])
 
@@ -330,8 +330,45 @@ async def test_skip_clears_current_and_bypasses_loop(
         assert len(scheduled) == 1
         await scheduled[0]
 
+    assert state.loop_mode is LoopMode.OFF
     assert state.current == nxt
     assert source.resolve_calls == [current.webpage_url, nxt.webpage_url]
+
+
+@pytest.mark.asyncio
+async def test_skip_requeues_current_under_queue_loop(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+    patch_voice_source: None,
+) -> None:
+    """Skip under queue loop reinserts the current track like a natural finish."""
+    _ = fake_voice_client
+    player, store, source, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    current = Track(title="A", webpage_url="https://a.example", requested_by=1)
+    nxt = Track(title="B", webpage_url="https://b.example", requested_by=2)
+    state = store.get(fake_guild.id)
+    state.loop_mode = LoopMode.QUEUE
+    state.queue.extend([current, nxt])
+    source.resolve_results = deque([resolved_track_for(current), resolved_track_for(nxt)])
+
+    await player.play_next(guild)
+    assert state.current == current
+    assert list(state.queue) == [nxt]
+
+    scheduled: list[asyncio.Future[object]] = []
+
+    def capture_schedule(coro: object, loop: asyncio.AbstractEventLoop) -> asyncio.Future[object]:
+        future = asyncio.ensure_future(coro, loop=loop)  # type: ignore[arg-type]
+        scheduled.append(future)
+        return future
+
+    with patch("cadence.player.asyncio.run_coroutine_threadsafe", side_effect=capture_schedule):
+        await player.skip(guild)
+        await scheduled[0]
+
+    assert state.current == nxt
+    assert list(state.queue) == [current]
 
 
 @pytest.mark.asyncio
@@ -340,7 +377,7 @@ async def test_skip_while_paused_advances(
     fake_voice_client: FakeVoiceClient,
     patch_voice_source: None,
 ) -> None:
-    """skip works while paused (§5.4: clear current + stop, no is_playing guard)."""
+    """skip works while paused by stopping playback and advancing."""
     _ = fake_voice_client
     player, store, source, _ = make_player()
     guild = guild_as_discord(fake_guild)
@@ -371,18 +408,18 @@ async def test_skip_while_paused_advances(
 
 
 @pytest.mark.asyncio
-async def test_set_loop_updates_state(
+async def test_set_loop_mode_updates_state(
     fake_guild: FakeGuild,
 ) -> None:
-    """C3-01/02: set_loop toggles the guild loop flag."""
+    """C3-01/02: set_loop_mode sets the guild loop mode."""
     player, store, _, _ = make_player()
     guild = guild_as_discord(fake_guild)
     state = store.get(fake_guild.id)
 
-    player.set_loop(guild, enabled=True)
-    assert state.loop is True
-    player.set_loop(guild, enabled=False)
-    assert state.loop is False
+    player.set_loop_mode(guild, LoopMode.TRACK)
+    assert state.loop_mode is LoopMode.TRACK
+    player.set_loop_mode(guild, LoopMode.OFF)
+    assert state.loop_mode is LoopMode.OFF
 
 
 @pytest.mark.asyncio
@@ -450,7 +487,7 @@ async def test_stop_clears_state_and_disconnects(
     state = store.get(fake_guild.id)
     state.queue.append(track)
     state.current = track
-    state.loop = True
+    state.loop_mode = LoopMode.TRACK
     source.resolve_results = deque([resolved_track_for(track)])
     await player.play_next(guild)
 
@@ -458,7 +495,7 @@ async def test_stop_clears_state_and_disconnects(
 
     assert len(state.queue) == 0
     assert state.current is None
-    assert state.loop is False
+    assert state.loop_mode is LoopMode.OFF
     assert state.voice_source is None
     assert fake_guild.voice_client is None
 
@@ -621,7 +658,7 @@ async def test_interrupt_clears_and_stops(
     player, store, _, _ = make_player()
     guild = guild_as_discord(fake_guild)
     state = store.get(fake_guild.id)
-    state.loop = True
+    state.loop_mode = LoopMode.TRACK
     state.current = Track(title="Now", webpage_url="https://now.example", requested_by=1)
     state.queue.append(Track(title="Next", webpage_url="https://next.example", requested_by=1))
     fake_voice_client.play("source")
@@ -629,7 +666,7 @@ async def test_interrupt_clears_and_stops(
     was_active = await player.interrupt(guild)
 
     assert was_active is True
-    assert state.loop is False
+    assert state.loop_mode is LoopMode.OFF
     assert state.current is None
     assert list(state.queue) == []
 
@@ -663,3 +700,106 @@ async def test_interrupt_idle_returns_false(
     was_active = await player.interrupt(guild)
 
     assert was_active is False
+
+
+@pytest.mark.asyncio
+async def test_play_next_queue_loop_cycles_and_replays_when_empty(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+    patch_voice_source: None,
+) -> None:
+    """Queue loop reinserts finished track at end and replays when queue empties."""
+    _ = fake_voice_client
+    player, store, source, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    current = Track(title="A", webpage_url="https://a.example", requested_by=1)
+    nxt = Track(title="B", webpage_url="https://b.example", requested_by=2)
+    state = store.get(fake_guild.id)
+    state.current = current
+    state.loop_mode = LoopMode.QUEUE
+    state.queue.append(nxt)
+    source.resolve_results = deque([resolved_track_for(nxt), resolved_track_for(current)])
+
+    await player.play_next(guild)
+
+    assert state.current == nxt
+    assert list(state.queue) == [current]
+
+    state.current = current
+    state.queue.clear()
+    source.resolve_results.append(resolved_track_for(current))
+    await player.play_next(guild)
+
+    assert state.current == current
+    assert len(state.queue) == 0
+
+
+@pytest.mark.asyncio
+async def test_play_next_queue_shuffle_reinserts_not_at_front(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+    patch_voice_source: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Queue shuffle inserts finished track at a random index other than 0."""
+    _ = fake_voice_client
+    player, store, source, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    current = Track(title="A", webpage_url="https://a.example", requested_by=1)
+    b = Track(title="B", webpage_url="https://b.example", requested_by=2)
+    c = Track(title="C", webpage_url="https://c.example", requested_by=3)
+    state = store.get(fake_guild.id)
+    state.current = current
+    state.loop_mode = LoopMode.QUEUE_SHUFFLE
+    state.queue.extend([b, c])
+    monkeypatch.setattr("cadence.player.random.randint", lambda _a, _b: 2)
+    source.resolve_results = deque([resolved_track_for(b)])
+
+    await player.play_next(guild)
+
+    assert state.current == b
+    assert list(state.queue) == [c, current]
+
+
+@pytest.mark.asyncio
+async def test_stop_resets_idle_activity(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+) -> None:
+    """stop resets idle timeout and activity timestamps."""
+    _ = fake_voice_client
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    state = store.get(fake_guild.id)
+    state.idle_minutes = 45
+    state.last_command_at = 100.0
+    state.last_song_started_at = 200.0
+    state.alone_since = 50.0
+
+    await player.stop(guild)
+
+    assert state.idle_minutes == 10
+    assert state.last_command_at is None
+    assert state.last_song_started_at is None
+    assert state.alone_since is None
+
+
+@pytest.mark.asyncio
+async def test_play_next_invokes_on_song_started_callback(
+    fake_guild: FakeGuild,
+    fake_voice_client: FakeVoiceClient,
+    patch_voice_source: None,
+) -> None:
+    """play_next notifies idle tracking when audio starts."""
+    _ = fake_voice_client
+    started: list[int] = []
+    player, store, source, _ = make_player()
+    player._on_song_started = started.append  # noqa: SLF001
+    guild = guild_as_discord(fake_guild)
+    track = Track(title="A", webpage_url="https://a.example", requested_by=1)
+    store.get(fake_guild.id).queue.append(track)
+    source.resolve_results = deque([resolved_track_for(track)])
+
+    await player.play_next(guild)
+
+    assert started == [fake_guild.id]

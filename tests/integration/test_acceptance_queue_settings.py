@@ -10,6 +10,7 @@ import pytest
 from cadence.commands.playback import handle_pause, handle_play, handle_resume
 from cadence.commands.queue import handle_nowplaying, handle_queue
 from cadence.commands.settings import handle_loop, handle_volume
+from cadence.state import LoopMode
 from tests.fakes import FakeVoiceClient
 from tests.integration.acceptance_helpers import (
     AcceptanceContext,
@@ -93,8 +94,8 @@ async def test_us3_us6_t3_06_loop_and_volume_persist_in_session(
     await handle_play(cast(discord.Interaction, play_interaction), "first", ctx.deps)
 
     loop_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
-    await handle_loop(cast(discord.Interaction, loop_interaction), ctx.deps)
-    assert loop_interaction.responses[0].content == "🔁 Loop enabled."
+    await handle_loop(cast(discord.Interaction, loop_interaction), LoopMode.TRACK, ctx.deps)
+    assert loop_interaction.responses[0].content == "Loop set to **Current song**."
 
     volume_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
     await handle_volume(cast(discord.Interaction, volume_interaction), 150, ctx.deps)
@@ -114,8 +115,8 @@ async def test_us3_us6_t3_06_loop_and_volume_persist_in_session(
     await handle_play(cast(discord.Interaction, queue_interaction), "second", ctx.deps)
 
     disable_loop = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
-    await handle_loop(cast(discord.Interaction, disable_loop), ctx.deps)
-    assert disable_loop.responses[0].content == "🔁 Loop disabled."
+    await handle_loop(cast(discord.Interaction, disable_loop), LoopMode.OFF, ctx.deps)
+    assert disable_loop.responses[0].content == "Loop set to **Off**."
 
     voice_client = cast(FakeVoiceClient, ctx.guild.voice_client)
     assert voice_client is not None

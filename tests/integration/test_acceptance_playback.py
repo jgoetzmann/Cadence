@@ -12,6 +12,7 @@ import pytest
 
 from cadence.commands.playback import handle_play, handle_skip, handle_stop
 from cadence.commands.settings import handle_loop
+from cadence.state import LoopMode
 from tests.fakes import FakeVoiceChannel, FakeVoiceClient
 from tests.integration.acceptance_helpers import (
     AcceptanceContext,
@@ -133,8 +134,8 @@ async def test_us3_t3_03_loop_replays_track_on_finish(acceptance_ctx: Acceptance
     interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
     await handle_play(cast(discord.Interaction, interaction), "loop me", ctx.deps)
     loop_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
-    await handle_loop(cast(discord.Interaction, loop_interaction), ctx.deps)
-    assert loop_interaction.responses[0].content == "🔁 Loop enabled."
+    await handle_loop(cast(discord.Interaction, loop_interaction), LoopMode.TRACK, ctx.deps)
+    assert loop_interaction.responses[0].content == "Loop set to **Current song**."
 
     voice_client = cast(FakeVoiceClient, ctx.guild.voice_client)
     assert voice_client is not None
@@ -159,7 +160,7 @@ async def test_us4_t3_03_skip_advances_past_looped_track(
     await handle_play(cast(discord.Interaction, play_interaction), "loop song", ctx.deps)
 
     loop_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
-    await handle_loop(cast(discord.Interaction, loop_interaction), ctx.deps)
+    await handle_loop(cast(discord.Interaction, loop_interaction), LoopMode.TRACK, ctx.deps)
 
     queue_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
     await handle_play(cast(discord.Interaction, queue_interaction), "next song", ctx.deps)
@@ -186,6 +187,7 @@ async def test_us4_t3_03_skip_advances_past_looped_track(
     state = ctx.store.get(ctx.guild.id)
     assert state.current is not None
     assert state.current.title == "Next Song"
+    assert state.loop_mode is LoopMode.OFF
 
 
 @pytest.mark.asyncio
@@ -210,14 +212,14 @@ async def test_us7_t3_04_stop_clears_and_disconnects(acceptance_ctx: AcceptanceC
     await handle_play(cast(discord.Interaction, play_interaction), "playing", ctx.deps)
 
     state = ctx.store.get(ctx.guild.id)
-    state.loop = True
+    state.loop_mode = LoopMode.TRACK
 
     stop_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
     await handle_stop(cast(discord.Interaction, stop_interaction), ctx.deps)
 
     assert stop_interaction.responses[0].content == "⏹️ Stopped and left the channel."
     assert state.current is None
-    assert state.loop is False
+    assert state.loop_mode is LoopMode.OFF
     assert len(state.queue) == 0
     assert ctx.guild.voice_client is None
 
@@ -250,3 +252,31 @@ async def test_us8_idle_stays_connected_and_reuses_voice_client(
     assert ctx.guild.voice_client is voice_client
     assert ctx.guild.voice_client.disconnect_calls == 0
     assert second_interaction.followups[0].content == "▶️ Now playing: **Only Song**"
+
+
+@pytest.mark.asyncio
+async def test_queue_loop_cycles_tracks(acceptance_ctx: AcceptanceContext) -> None:
+    """Queue loop reinserts finished tracks and advances through the queue."""
+    ctx = acceptance_ctx
+    first = script_track("First")
+    second = script_track("Second")
+    ctx.source.fetch_results = deque([first, second])
+    ctx.source.resolve_results = deque([first, second, first])
+    play_first = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
+    await handle_play(cast(discord.Interaction, play_first), "first", ctx.deps)
+
+    queue_second = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
+    await handle_play(cast(discord.Interaction, queue_second), "second", ctx.deps)
+
+    loop_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
+    await handle_loop(cast(discord.Interaction, loop_interaction), LoopMode.QUEUE, ctx.deps)
+
+    voice_client = cast(FakeVoiceClient, ctx.guild.voice_client)
+    assert voice_client is not None
+    await finish_track(voice_client)
+
+    state = ctx.store.get(ctx.guild.id)
+    assert state.current is not None
+    assert state.current.title == "Second"
+    assert len(state.queue) == 1
+    assert state.queue[0].title == "First"

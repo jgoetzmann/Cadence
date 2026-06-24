@@ -48,7 +48,7 @@ async def test_build_app_on_ready_syncs_commands() -> None:
     sync_commands.assert_awaited_once()
 
 
-def test_build_app_wires_thirteen_commands_and_youtube_player() -> None:
+def test_build_app_wires_sixteen_commands_and_youtube_player() -> None:
     settings = Settings(
         token="test-token",
         guild_id=None,
@@ -65,12 +65,126 @@ def test_build_app_wires_thirteen_commands_and_youtube_player() -> None:
     tree, deps = mock_register.call_args.args
     names = {command.name for command in tree.get_commands()}
     assert names == set(COMMAND_NAMES)
-    assert len(tree.get_commands()) == 13
+    assert len(tree.get_commands()) == 16
     assert isinstance(deps.source, YouTubeSource)
     assert isinstance(deps.player, Player)
     assert deps.player._source is deps.source
     assert deps.player._client is client
     assert deps.store.default_volume == 40
+
+
+@pytest.mark.asyncio
+async def test_build_app_on_ready_starts_idle_manager() -> None:
+    settings = Settings(
+        token="test-token",
+        guild_id=123,
+        log_level=logging.INFO,
+        default_volume=50,
+    )
+    with (
+        patch("cadence.app.configure_logging"),
+        patch("cadence.app.sync_commands", new_callable=AsyncMock),
+        patch("cadence.app.IdleManager") as idle_cls,
+    ):
+        client = build_app(settings)
+        idle = idle_cls.return_value
+        await client.on_ready()
+
+    idle.start.assert_called_once()
+    idle.set_player.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_build_app_on_ready_logs_when_user_present() -> None:
+    settings = Settings(
+        token="test-token",
+        guild_id=123,
+        log_level=logging.INFO,
+        default_volume=50,
+    )
+    with (
+        patch("cadence.app.configure_logging"),
+        patch("cadence.app.sync_commands", new_callable=AsyncMock),
+        patch("cadence.app.IdleManager"),
+        patch("cadence.app.log") as app_log,
+    ):
+        client = build_app(settings)
+        with patch.object(type(client), "user", new_callable=PropertyMock) as user_prop:
+            user_prop.return_value = MagicMock(id=123)
+            await client.on_ready()
+
+    app_log.info.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_build_app_on_interaction_records_slash_commands() -> None:
+    settings = Settings(
+        token="test-token",
+        guild_id=None,
+        log_level=logging.INFO,
+        default_volume=50,
+    )
+    with (
+        patch("cadence.app.configure_logging"),
+        patch("cadence.app.IdleManager") as idle_cls,
+    ):
+        client = build_app(settings)
+        idle = idle_cls.return_value
+
+    interaction = MagicMock()
+    interaction.type = discord.InteractionType.application_command
+    interaction.guild = MagicMock(id=42)
+
+    await client.on_interaction(interaction)
+
+    idle.record_command.assert_called_once_with(42)
+
+
+@pytest.mark.asyncio
+async def test_build_app_close_stops_idle_manager() -> None:
+    settings = Settings(
+        token="test-token",
+        guild_id=None,
+        log_level=logging.INFO,
+        default_volume=50,
+    )
+    with (
+        patch("cadence.app.configure_logging"),
+        patch("cadence.app.IdleManager") as idle_cls,
+    ):
+        client = build_app(settings)
+        idle = idle_cls.return_value
+        idle.stop = AsyncMock()
+
+    with patch.object(type(client), "voice_clients", new_callable=PropertyMock) as voice_clients:
+        voice_clients.return_value = []
+        await client.close()
+
+    idle.stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_build_app_on_voice_state_update_delegates_to_idle_manager() -> None:
+    settings = Settings(
+        token="test-token",
+        guild_id=None,
+        log_level=logging.INFO,
+        default_volume=50,
+    )
+    with (
+        patch("cadence.app.configure_logging"),
+        patch("cadence.app.IdleManager") as idle_cls,
+    ):
+        client = build_app(settings)
+        idle = idle_cls.return_value
+        idle.on_voice_state_update = AsyncMock()
+
+    member = MagicMock()
+    before = MagicMock()
+    after = MagicMock()
+    await client.on_voice_state_update(member, before, after)
+
+    idle.on_voice_state_update.assert_awaited_once_with(member, before, after)
 
 
 @pytest.mark.asyncio

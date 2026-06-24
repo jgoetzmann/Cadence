@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from cadence.interfaces import AudioSource, Player, ResolvedTrack
-from cadence.state import Track
+from cadence.state import LoopMode, Track
 
 
 def test_resolved_track_is_immutable() -> None:
@@ -73,8 +73,8 @@ class _ConcretePlayer:
     async def stop(self, guild: object) -> None:
         _ = guild
 
-    def set_loop(self, guild: object, *, enabled: bool) -> None:
-        _ = (guild, enabled)
+    def set_loop_mode(self, guild: object, mode: LoopMode) -> None:
+        _ = (guild, mode)
 
     def set_volume(self, guild: object, level: int) -> None:
         _ = (guild, level)

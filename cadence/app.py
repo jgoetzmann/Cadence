@@ -11,6 +11,7 @@ from cadence.client import build_client, sync_commands
 from cadence.commands import register
 from cadence.commands.deps import CommandDeps
 from cadence.config import Settings
+from cadence.idle import IdleManager
 from cadence.logging_setup import configure_logging
 from cadence.player import Player
 from cadence.sources.youtube import YouTubeSource
@@ -29,7 +30,9 @@ def build_app(settings: Settings | None = None) -> discord.Client:
 
     store = StateStore(default_volume=resolved.default_volume)
     source = YouTubeSource()
-    player = Player(client, store, source)
+    idle_manager = IdleManager(client, store)
+    player = Player(client, store, source, on_song_started=idle_manager.record_song_started)
+    idle_manager.set_player(player)
     deps = CommandDeps(player=player, source=source, store=store)
     register(tree, deps)
 
@@ -53,12 +56,30 @@ def build_app(settings: Settings | None = None) -> discord.Client:
     @client.event
     async def on_ready() -> None:
         await sync_commands(tree, resolved)
+        idle_manager.start()
         if client.user is not None:
             log.info("Logged in as %s (id: %s)", client.user, client.user.id)
+
+    @client.event
+    async def on_voice_state_update(
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        await idle_manager.on_voice_state_update(member, before, after)
+
+    @client.event
+    async def on_interaction(interaction: discord.Interaction) -> None:
+        if (
+            interaction.type == discord.InteractionType.application_command
+            and interaction.guild is not None
+        ):
+            idle_manager.record_command(interaction.guild.id)
 
     original_close = client.close
 
     async def close() -> None:
+        await idle_manager.stop()
         for voice_client in list(client.voice_clients):
             await voice_client.disconnect(force=True)
         await original_close()

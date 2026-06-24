@@ -18,6 +18,7 @@ def build_client(settings: Settings) -> tuple[discord.Client, app_commands.Comma
     """Build a Discord client and command tree with default intents."""
     _ = settings  # reserved for future client configuration
     intents = discord.Intents.default()
+    intents.voice_states = True
     client = discord.Client(intents=intents)
     tree = app_commands.CommandTree(client)
     return client, tree

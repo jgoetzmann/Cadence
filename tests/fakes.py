@@ -12,10 +12,11 @@ import pytest
 
 from cadence.interfaces import ResolvedTrack
 from cadence.player import QueueFullError
-from cadence.state import Track
+from cadence.state import LoopMode, Track
 
 __all__ = [
     "FakeAudioSource",
+    "FakeMember",
     "FakeGuild",
     "FakeInteraction",
     "FakePlayer",
@@ -69,6 +70,7 @@ class FakeVoiceChannel:
     id: int
     guild: FakeGuild
     name: str = "voice"
+    members: list[object] = field(default_factory=list)
 
     async def connect(self, **kwargs: Any) -> FakeVoiceClient:
         client = FakeVoiceClient(channel=self)
@@ -92,6 +94,10 @@ class FakeVoiceClient:
     _paused: bool = False
     disconnect_calls: int = 0
     move_to_calls: list[FakeVoiceChannel] = field(default_factory=list)
+
+    @property
+    def guild(self) -> FakeGuild:
+        return self.channel.guild
 
     def play(
         self,
@@ -155,6 +161,16 @@ class FakeVoiceState:
     """Voice state attached to a fake user."""
 
     channel: FakeVoiceChannel | None
+
+
+@dataclass(slots=True)
+class FakeMember:
+    """Minimal guild member for voice-state tests."""
+
+    id: int
+    guild: FakeGuild
+    bot: bool = False
+    voice: FakeVoiceState | None = None
 
 
 @dataclass(slots=True)
@@ -268,7 +284,7 @@ class FakePlayer:
 
     snapshot_current: Track | None = None
     snapshot_upcoming: list[Track] = field(default_factory=list)
-    loop_enabled: bool = False
+    loop_mode: LoopMode = LoopMode.OFF
     volume: int = 50
     enqueued: list[tuple[discord.Guild, Track]] = field(default_factory=list)
     play_next_calls: list[discord.Guild] = field(default_factory=list)
@@ -276,7 +292,7 @@ class FakePlayer:
     pause_calls: list[discord.Guild] = field(default_factory=list)
     resume_calls: list[discord.Guild] = field(default_factory=list)
     stop_calls: list[discord.Guild] = field(default_factory=list)
-    loop_calls: list[tuple[discord.Guild, bool]] = field(default_factory=list)
+    loop_mode_calls: list[tuple[discord.Guild, LoopMode]] = field(default_factory=list)
     volume_calls: list[tuple[discord.Guild, int]] = field(default_factory=list)
     interrupt_calls: list[discord.Guild] = field(default_factory=list)
     reset_lineup_calls: list[discord.Guild] = field(default_factory=list)
@@ -289,7 +305,7 @@ class FakePlayer:
         self.reset_lineup_calls.append(guild)
         self.snapshot_upcoming = []
         self.snapshot_current = None
-        self.loop_enabled = False
+        self.loop_mode = LoopMode.OFF
 
     async def enqueue(self, guild: discord.Guild, track: Track) -> None:
         if self.queue_full:
@@ -342,9 +358,9 @@ class FakePlayer:
     async def stop(self, guild: discord.Guild) -> None:
         self.stop_calls.append(guild)
 
-    def set_loop(self, guild: discord.Guild, *, enabled: bool) -> None:
-        self.loop_enabled = enabled
-        self.loop_calls.append((guild, enabled))
+    def set_loop_mode(self, guild: discord.Guild, mode: LoopMode) -> None:
+        self.loop_mode = mode
+        self.loop_mode_calls.append((guild, mode))
 
     def set_volume(self, guild: discord.Guild, level: int) -> None:
         self.volume = level

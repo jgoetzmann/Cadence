@@ -7,7 +7,7 @@ from typing import Protocol, runtime_checkable
 
 import discord
 
-from cadence.state import Track
+from cadence.state import LoopMode, Track
 
 __all__ = ["AudioSource", "Player", "ResolvedTrack"]
 
@@ -83,8 +83,8 @@ class Player(Protocol):
         """Stop playback, clear state, and disconnect."""
         ...
 
-    def set_loop(self, guild: discord.Guild, *, enabled: bool) -> None:
-        """Set whether the current track should loop."""
+    def set_loop_mode(self, guild: discord.Guild, mode: LoopMode) -> None:
+        """Set the guild loop mode."""
         ...
 
     def set_volume(self, guild: discord.Guild, level: int) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from cadence.interfaces import AudioSource, Player, ResolvedTrack
-from cadence.state import Track
+from cadence.state import LoopMode, Track
 from tests.fakes import (
     FakeAudioSource,
     FakeGuild,
@@ -210,13 +210,13 @@ async def test_fake_player_records_calls_and_snapshot() -> None:
     await player.pause(guild)  # type: ignore[arg-type]
     await player.resume(guild)  # type: ignore[arg-type]
     await player.stop(guild)  # type: ignore[arg-type]
-    player.set_loop(guild, enabled=True)  # type: ignore[arg-type]
+    player.set_loop_mode(guild, LoopMode.TRACK)  # type: ignore[arg-type]
     player.set_volume(guild, 25)  # type: ignore[arg-type]
 
     current, upcoming = player.snapshot(guild)  # type: ignore[arg-type]
     assert current == track
     assert upcoming == [track]
-    assert player.loop_enabled is True
+    assert player.loop_mode is LoopMode.TRACK
     assert player.volume == 25
     assert len(player.enqueued) == 1
     assert len(player.play_next_calls) == 1
