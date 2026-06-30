@@ -206,14 +206,18 @@ class Player:
         if vc.is_paused():
             vc.resume()
 
-    async def stop(self, guild: discord.Guild) -> None:
-        """Stop playback, clear state, and disconnect."""
+    def clear_session(self, guild: discord.Guild) -> None:
+        """Reset playback state without touching the voice connection."""
         state = self._store.get(guild.id)
         state.queue.clear()
         state.current = None
         state.loop_mode = LoopMode.OFF
         state.voice_source = None
         reset_idle_activity(state)
+
+    async def stop(self, guild: discord.Guild) -> None:
+        """Stop playback, clear state, and disconnect."""
+        self.clear_session(guild)
         voice_client = guild.voice_client
         if voice_client is not None:
             vc = cast(discord.VoiceClient, voice_client)

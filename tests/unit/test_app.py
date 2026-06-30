@@ -164,6 +164,64 @@ async def test_build_app_close_stops_idle_manager() -> None:
 
 
 @pytest.mark.asyncio
+async def test_build_app_on_voice_state_update_clears_session_when_bot_disconnects() -> None:
+    settings = Settings(
+        token="test-token",
+        guild_id=None,
+        log_level=logging.INFO,
+        default_volume=50,
+    )
+    with (
+        patch("cadence.app.configure_logging"),
+        patch("cadence.app.IdleManager") as idle_cls,
+        patch("cadence.app.Player") as player_cls,
+    ):
+        client = build_app(settings)
+        player = player_cls.return_value
+        idle = idle_cls.return_value
+        idle.on_voice_state_update = AsyncMock()
+
+    guild = MagicMock()
+    member = MagicMock(id=7, guild=guild)
+    before = MagicMock(channel=MagicMock())
+    after = MagicMock(channel=None)
+    with patch.object(type(client), "user", new_callable=PropertyMock) as user_prop:
+        user_prop.return_value = MagicMock(id=7)
+        await client.on_voice_state_update(member, before, after)
+
+    player.clear_session.assert_called_once_with(guild)
+    idle.on_voice_state_update.assert_awaited_once_with(member, before, after)
+
+
+@pytest.mark.asyncio
+async def test_build_app_on_voice_state_update_keeps_session_when_bot_moves() -> None:
+    settings = Settings(
+        token="test-token",
+        guild_id=None,
+        log_level=logging.INFO,
+        default_volume=50,
+    )
+    with (
+        patch("cadence.app.configure_logging"),
+        patch("cadence.app.IdleManager") as idle_cls,
+        patch("cadence.app.Player") as player_cls,
+    ):
+        client = build_app(settings)
+        player = player_cls.return_value
+        idle_cls.return_value.on_voice_state_update = AsyncMock()
+
+    guild = MagicMock()
+    member = MagicMock(id=7, guild=guild)
+    before = MagicMock(channel=MagicMock())
+    after = MagicMock(channel=MagicMock())
+    with patch.object(type(client), "user", new_callable=PropertyMock) as user_prop:
+        user_prop.return_value = MagicMock(id=7)
+        await client.on_voice_state_update(member, before, after)
+
+    player.clear_session.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_build_app_on_voice_state_update_delegates_to_idle_manager() -> None:
     settings = Settings(
         token="test-token",

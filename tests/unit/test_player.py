@@ -762,6 +762,29 @@ async def test_play_next_queue_shuffle_reinserts_not_at_front(
 
 
 @pytest.mark.asyncio
+async def test_clear_session_resets_playback_state_but_keeps_volume(
+    fake_guild: FakeGuild,
+) -> None:
+    """clear_session wipes queue/current/loop without disconnecting or resetting volume."""
+    player, store, _, _ = make_player()
+    guild = guild_as_discord(fake_guild)
+    track = Track(title="A", webpage_url="https://a.example", requested_by=1)
+    state = store.get(fake_guild.id)
+    state.queue.append(track)
+    state.current = track
+    state.loop_mode = LoopMode.TRACK
+    state.volume = 75
+
+    player.clear_session(guild)
+
+    assert len(state.queue) == 0
+    assert state.current is None
+    assert state.loop_mode is LoopMode.OFF
+    assert state.voice_source is None
+    assert state.volume == 75
+
+
+@pytest.mark.asyncio
 async def test_stop_resets_idle_activity(
     fake_guild: FakeGuild,
     fake_voice_client: FakeVoiceClient,

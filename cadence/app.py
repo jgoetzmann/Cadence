@@ -66,6 +66,13 @@ def build_app(settings: Settings | None = None) -> discord.Client:
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
+        if (
+            client.user is not None
+            and member.id == client.user.id
+            and before.channel is not None
+            and after.channel is None
+        ):
+            player.clear_session(member.guild)
         await idle_manager.on_voice_state_update(member, before, after)
 
     @client.event
