@@ -7,7 +7,7 @@ import contextlib
 import logging
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import discord
 
@@ -108,11 +108,18 @@ class IdleManager:
         for voice_client in list(self._client.voice_clients):
             guild = voice_client.guild
             state = self._store.get(guild.id)
-            if await self._should_disconnect(state, now):
+            if await self._should_disconnect(
+                state, cast(discord.VoiceClient, voice_client), now
+            ):
                 log.info("Idle timeout reached for guild %s; disconnecting", guild.id)
                 await self._player.stop(guild)
 
-    async def _should_disconnect(self, state: object, now: float) -> bool:
+    async def _should_disconnect(
+        self,
+        state: object,
+        voice_client: discord.VoiceClient,
+        now: float,
+    ) -> bool:
         from cadence.state import GuildState
 
         if not isinstance(state, GuildState):
@@ -128,7 +135,15 @@ class IdleManager:
 
         song_idle = (now - state.last_song_started_at) >= idle_seconds
         command_idle = (now - state.last_command_at) >= idle_seconds
-        return song_idle and command_idle
+        if not (song_idle and command_idle):
+            return False
+
+        return not self._is_audio_active(voice_client)
+
+    @staticmethod
+    def _is_audio_active(voice_client: discord.VoiceClient) -> bool:
+        """True while audio is playing or paused (not between tracks)."""
+        return voice_client.is_playing() or voice_client.is_paused()
 
     @staticmethod
     def _human_count(channel: discord.VoiceChannel) -> int:

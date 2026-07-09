@@ -395,10 +395,12 @@ before advancing.
 Cadence checks roughly every 30 seconds while connected to voice. Disconnect
 (equivalent to `/stop`) happens if **either**:
 
-1. **Activity timeout** — Both conditions are true:
+1. **Activity timeout** — All conditions are true:
    - No new song has **started** for longer than `idle_minutes`, **and**
    - No Cadence slash command has been used in the guild for longer than
-     `idle_minutes`.
+     `idle_minutes`, **and**
+   - Nothing is currently **playing or paused** (so a long track can run without
+     disconnecting).
 2. **Alone timeout** — The bot is the only non-bot member in its voice channel
    for longer than `idle_minutes`.
 
@@ -416,6 +418,8 @@ Cadence checks roughly every 30 seconds while connected to voice. Disconnect
 
 **Edge cases**
 
+- Paused playback counts as active audio for activity timeout (no auto-disconnect
+  while paused).
 - Paused playback still counts as “last song started” until skip/stop.
 - Bot not in voice: idle checks do not apply.
 - Only one bot process should run; idle state is in-memory per process.
@@ -466,8 +470,8 @@ Cadence checks roughly every 30 seconds while connected to voice. Disconnect
 ### End or walk away
 
 - `/stop` — immediate leave and reset.
-- `/idle 5` — leave after 5 minutes of no commands **and** no new playback, or if
-  alone in channel for 5 minutes.
+- `/idle 5` — leave after 5 minutes of no commands **and** no new playback **and**
+  nothing playing/paused, or if alone in channel for 5 minutes.
 
 ---
 

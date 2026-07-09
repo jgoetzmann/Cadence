@@ -243,8 +243,105 @@ async def test_should_disconnect_false_when_activity_incomplete(
     state = store.get(9)
     state.idle_minutes = 10
     state.last_command_at = 100.0
+    voice_client = FakeVoiceClient(channel=FakeVoiceChannel(id=90, guild=FakeGuild(id=9)))
 
-    assert await manager._should_disconnect(state, 1000.0) is False
+    assert (
+        await manager._should_disconnect(
+            state, cast(discord.VoiceClient, voice_client), 1000.0
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_tick_skips_activity_disconnect_while_playing(
+    idle_setup: tuple[FakeClient, StateStore, RecordingPlayer, IdleManager],
+) -> None:
+    client, store, player, manager = idle_setup
+    guild = FakeGuild(id=10)
+    channel = FakeVoiceChannel(id=100, guild=guild)
+    voice_client = FakeVoiceClient(channel=channel)
+    voice_client.play("source")
+    guild.voice_client = voice_client
+    client.voice_clients.append(voice_client)
+
+    state = store.get(10)
+    state.idle_minutes = 10
+    state.last_command_at = 100.0
+    state.last_song_started_at = 200.0
+    manager._clock["now"] = 1000.0  # type: ignore[attr-defined]
+
+    await manager.tick()
+
+    assert player.stop_calls == []
+
+
+@pytest.mark.asyncio
+async def test_tick_skips_activity_disconnect_while_paused(
+    idle_setup: tuple[FakeClient, StateStore, RecordingPlayer, IdleManager],
+) -> None:
+    client, store, player, manager = idle_setup
+    guild = FakeGuild(id=11)
+    channel = FakeVoiceChannel(id=110, guild=guild)
+    voice_client = FakeVoiceClient(channel=channel)
+    voice_client.play("source")
+    voice_client.pause()
+    guild.voice_client = voice_client
+    client.voice_clients.append(voice_client)
+
+    state = store.get(11)
+    state.idle_minutes = 10
+    state.last_command_at = 100.0
+    state.last_song_started_at = 200.0
+    manager._clock["now"] = 1000.0  # type: ignore[attr-defined]
+
+    await manager.tick()
+
+    assert player.stop_calls == []
+
+
+@pytest.mark.asyncio
+async def test_tick_disconnects_activity_idle_when_not_playing(
+    idle_setup: tuple[FakeClient, StateStore, RecordingPlayer, IdleManager],
+) -> None:
+    client, store, player, manager = idle_setup
+    guild = FakeGuild(id=12)
+    channel = FakeVoiceChannel(id=120, guild=guild)
+    voice_client = FakeVoiceClient(channel=channel)
+    guild.voice_client = voice_client
+    client.voice_clients.append(voice_client)
+
+    state = store.get(12)
+    state.idle_minutes = 10
+    state.last_command_at = 100.0
+    state.last_song_started_at = 200.0
+    manager._clock["now"] = 1000.0  # type: ignore[attr-defined]
+
+    await manager.tick()
+
+    assert len(player.stop_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_tick_still_disconnects_when_alone_even_while_playing(
+    idle_setup: tuple[FakeClient, StateStore, RecordingPlayer, IdleManager],
+) -> None:
+    client, store, player, manager = idle_setup
+    guild = FakeGuild(id=13)
+    channel = FakeVoiceChannel(id=130, guild=guild)
+    voice_client = FakeVoiceClient(channel=channel)
+    voice_client.play("source")
+    guild.voice_client = voice_client
+    client.voice_clients.append(voice_client)
+
+    state = store.get(13)
+    state.idle_minutes = 5
+    state.alone_since = 100.0
+    manager._clock["now"] = 500.0  # type: ignore[attr-defined]
+
+    await manager.tick()
+
+    assert len(player.stop_calls) == 1
 
 
 @pytest.mark.asyncio
