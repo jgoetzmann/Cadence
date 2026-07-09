@@ -11,7 +11,7 @@ from cadence.state import StateStore
 from tests.fakes import FakeAudioSource, FakePlayer
 
 
-def test_register_attaches_exactly_sixteen_commands() -> None:
+def test_register_attaches_exactly_seventeen_commands() -> None:
     client = discord.Client(intents=discord.Intents.default())
     tree = app_commands.CommandTree(client)
     deps = CommandDeps(
@@ -24,4 +24,4 @@ def test_register_attaches_exactly_sixteen_commands() -> None:
 
     names = {command.name for command in tree.get_commands()}
     assert names == set(COMMAND_NAMES)
-    assert len(tree.get_commands()) == 16
+    assert len(tree.get_commands()) == 17

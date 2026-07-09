@@ -31,6 +31,9 @@ HELP_TEXT = f"""**Cadence — command overview**
 • `/volume` — Set playback volume (**0–100**)
 • `/idle` — Auto-disconnect after inactivity (**1–1500** min, default **10**)
 
+**Other**
+• `/ping` — Check if Cadence is online
+
 You must be in a voice channel for `/play`, `/forceplay`, and `/move`."""
 
 

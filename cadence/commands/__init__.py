@@ -7,6 +7,7 @@ from discord import app_commands
 from cadence.commands.debug import register_debug
 from cadence.commands.deps import CommandDeps
 from cadence.commands.help import register_help
+from cadence.commands.ping import register_ping
 from cadence.commands.playback import register_playback
 from cadence.commands.queue import register_queue
 from cadence.commands.settings import register_settings
@@ -30,6 +31,7 @@ COMMAND_NAMES = frozenset(
         "volume",
         "idle",
         "help",
+        "ping",
         "debug",
     }
 )
@@ -41,4 +43,5 @@ def register(tree: app_commands.CommandTree, deps: CommandDeps) -> None:
     register_queue(tree, deps)
     register_settings(tree, deps)
     register_help(tree, deps)
+    register_ping(tree, deps)
     register_debug(tree, deps)

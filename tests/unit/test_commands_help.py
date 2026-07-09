@@ -24,3 +24,4 @@ async def test_help_sends_overview(command_deps: CommandDeps) -> None:
     assert "/play" in interaction.responses[0].content
     assert "/loop" in interaction.responses[0].content
     assert "/idle" in interaction.responses[0].content
+    assert "/ping" in interaction.responses[0].content
