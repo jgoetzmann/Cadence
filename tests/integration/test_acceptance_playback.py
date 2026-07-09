@@ -21,6 +21,7 @@ from tests.integration.acceptance_helpers import (
     script_play_flow,
     script_track,
 )
+from tests.integration.helpers import FakePCMVolumeTransformer
 
 
 @pytest.mark.asyncio
@@ -130,7 +131,10 @@ async def test_us3_t3_03_loop_replays_track_on_finish(acceptance_ctx: Acceptance
     ctx = acceptance_ctx
     track = script_track("Loop Me")
     ctx.source.fetch_results = deque([track])
-    ctx.source.resolve_results = deque([track, track])
+    ctx.source.playback_results = deque([
+        FakePCMVolumeTransformer(source="loop", volume=0.5),
+        FakePCMVolumeTransformer(source="loop", volume=0.5),
+    ])
     interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
     await handle_play(cast(discord.Interaction, interaction), "loop me", ctx.deps)
     loop_interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
@@ -139,13 +143,13 @@ async def test_us3_t3_03_loop_replays_track_on_finish(acceptance_ctx: Acceptance
 
     voice_client = cast(FakeVoiceClient, ctx.guild.voice_client)
     assert voice_client is not None
-    resolve_before = len(ctx.source.resolve_calls)
+    playback_before = len(ctx.source.playback_calls)
     await finish_track(voice_client)
 
     state = ctx.store.get(ctx.guild.id)
     assert state.current is not None
     assert state.current.title == "Loop Me"
-    assert len(ctx.source.resolve_calls) == resolve_before + 1
+    assert len(ctx.source.playback_calls) == playback_before + 1
     assert voice_client.is_playing()
 
 
@@ -232,7 +236,10 @@ async def test_us8_idle_stays_connected_and_reuses_voice_client(
     ctx = acceptance_ctx
     track = script_track("Only Song")
     ctx.source.fetch_results = deque([track, track])
-    ctx.source.resolve_results = deque([track, track])
+    ctx.source.playback_results = deque([
+        FakePCMVolumeTransformer(source="only-1", volume=0.5),
+        FakePCMVolumeTransformer(source="only-2", volume=0.5),
+    ])
     interaction = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
 
     await handle_play(cast(discord.Interaction, interaction), "only song", ctx.deps)
@@ -261,7 +268,11 @@ async def test_queue_loop_cycles_tracks(acceptance_ctx: AcceptanceContext) -> No
     first = script_track("First")
     second = script_track("Second")
     ctx.source.fetch_results = deque([first, second])
-    ctx.source.resolve_results = deque([first, second, first])
+    ctx.source.playback_results = deque([
+        FakePCMVolumeTransformer(source="first", volume=0.5),
+        FakePCMVolumeTransformer(source="second", volume=0.5),
+        FakePCMVolumeTransformer(source="first-again", volume=0.5),
+    ])
     play_first = make_interaction(ctx.guild, voice_channel=ctx.voice_channel)
     await handle_play(cast(discord.Interaction, play_first), "first", ctx.deps)
 

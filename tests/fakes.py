@@ -248,14 +248,20 @@ class FakeAudioSource:
     resolve_results: deque[ResolvedTrack | Exception] | list[ResolvedTrack | Exception] = field(
         default_factory=list
     )
+    playback_results: deque[object | Exception] | list[object | Exception] = field(
+        default_factory=list
+    )
     fetch_calls: list[tuple[str, bool]] = field(default_factory=list)
     resolve_calls: list[str] = field(default_factory=list)
+    playback_calls: list[tuple[str, int]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not isinstance(self.fetch_results, deque):
             self.fetch_results = deque(self.fetch_results)
         if not isinstance(self.resolve_results, deque):
             self.resolve_results = deque(self.resolve_results)
+        if not isinstance(self.playback_results, deque):
+            self.playback_results = deque(self.playback_results)
 
     async def fetch(self, query: str, *, is_url: bool) -> ResolvedTrack:
         self.fetch_calls.append((query, is_url))
@@ -275,6 +281,22 @@ class FakeAudioSource:
         result = self.resolve_results.popleft()
         if isinstance(result, Exception):
             raise result
+        return result
+
+    async def create_playback_source(
+        self,
+        webpage_url: str,
+        volume: int,
+    ) -> object:
+        self.playback_calls.append((webpage_url, volume))
+        if not self.playback_results:
+            msg = "No scripted playback result remaining"
+            raise RuntimeError(msg)
+        result = self.playback_results.popleft()
+        if isinstance(result, Exception):
+            raise result
+        if hasattr(result, "volume"):
+            result.volume = volume / 100
         return result
 
 
@@ -415,12 +437,25 @@ class FakeYoutubeDL:
 
 
 def patch_ytdl(monkeypatch: pytest.MonkeyPatch, fake: FakeYoutubeDL) -> None:
-    """Inject a FakeYoutubeDL instance into YouTubeSource."""
+    """Inject FakeYoutubeDL instances into YouTubeSource (one per unique yt-dlp opts)."""
     from cadence.sources import youtube as youtube_module
 
-    monkeypatch.setattr(youtube_module, "_shared_ytdl", None)
-    monkeypatch.setattr(
-        youtube_module.yt_dlp,
-        "YoutubeDL",
-        lambda _opts: fake,
-    )
+    cache: dict[tuple[str, str], FakeYoutubeDL] = {}
+
+    def factory(opts: dict[str, object]) -> FakeYoutubeDL:
+        key = (
+            str(opts.get("cookiefile", "")),
+            str(opts.get("proxy", "")),
+        )
+        if key not in cache:
+            if not cache:
+                cache[key] = fake
+            else:
+                cache[key] = FakeYoutubeDL(
+                    results=list(fake.results),
+                    on_extract=fake.on_extract,
+                )
+        return cache[key]
+
+    monkeypatch.setattr(youtube_module, "_shared_ytdl", {})
+    monkeypatch.setattr(youtube_module.yt_dlp, "YoutubeDL", factory)

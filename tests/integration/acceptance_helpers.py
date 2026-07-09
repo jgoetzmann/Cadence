@@ -19,7 +19,7 @@ from tests.fakes import (
     FakeVoiceChannel,
     FakeVoiceClient,
 )
-from tests.integration.helpers import FakeClient, advance_after
+from tests.integration.helpers import FakeClient, FakePCMVolumeTransformer, advance_after
 
 __all__ = [
     "AcceptanceContext",
@@ -55,10 +55,15 @@ def script_track(title: str) -> ResolvedTrack:
 
 
 def script_play_flow(ctx: AcceptanceContext, *titles: str) -> None:
-    """Script fetch/resolve results for one /play call per title."""
+    """Script fetch/playback results for one /play call per title."""
     tracks = [script_track(title) for title in titles]
     ctx.source.fetch_results = deque(tracks)
-    ctx.source.resolve_results = deque(tracks)
+    ctx.source.playback_results = deque(
+        [
+            FakePCMVolumeTransformer(source=f"pcm:{track.webpage_url}", volume=0.5)
+            for track in tracks
+        ],
+    )
 
 
 def make_interaction(

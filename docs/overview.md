@@ -4,7 +4,7 @@
 > Every other scaffolding file derives from this document.
 > Cite sections as `overview.md §6.2`.
 
-**Status:** v1 scaffold · **Stack:** Python 3.11, discord.py 2.x, yt-dlp, FFmpeg
+**Status:** v1.0.0 · **Stack:** Python 3.11, discord.py 2.x, yt-dlp, FFmpeg
 **Audience:** self-hosted, personal / small-community use · **Persistence:** none (in-memory)
 
 ---
@@ -197,8 +197,9 @@ connect/move voice client → `AudioSource.fetch(query)` (off the event loop, §
 Network/transient errors are logged (§13) and reported without internals.
 
 ### 5.2 Playback engine (`play_next`)
-**Description.** The core loop. Decides the next track, resolves a fresh stream URL,
-builds the FFmpeg source, and plays it; schedules itself again when the track ends.
+**Description.** The core loop. Decides the next track, starts piped playback via
+`AudioSource.create_playback_source(webpage_url)`, and schedules itself again when
+the track ends. See **`playback-architecture.md`** for the full pipeline.
 
 **Branch logic (in order):**
 1. No voice client → return (nothing to do).
@@ -206,9 +207,10 @@ builds the FFmpeg source, and plays it; schedules itself again when the track en
 3. Queue non-empty → pop next into `current` (post "now playing").
 4. Else → set `current = None` and **stay connected** (idle, AC-8.1).
 
-**Stream resolution.** Always re-resolve the stream URL immediately before playing
-(YouTube URLs expire — §9.1, G-006). On resolution failure: post a skip warning,
-clear `current`, and recurse to the next track.
+**Playback.** Always stream from the canonical `webpage_url` immediately before
+playing (G-006). Phase A (`fetch`) resolves metadata; Phase B
+(`create_playback_source`) pipes yt-dlp stdout into FFmpeg. On playback failure:
+post a skip warning, clear `current`, and recurse to the next track.
 
 **After-callback.** `voice_client.play(source, after=_after)`. `_after` runs on a
 worker thread, so it re-enters the event loop via
@@ -347,14 +349,17 @@ role-gating (e.g., DJ role) is out of scope for v1.
 ## 9. External integrations
 
 ### 9.1 YouTube via yt-dlp (audio source)
-- **What:** `yt-dlp` resolves search terms / URLs to stream URLs; FFmpeg transcodes
-  to PCM for Discord.
-- **Auth:** none.
+- **What:** Phase A — `yt-dlp` resolves search/URL to metadata (`fetch`). Phase B —
+  piped `yt-dlp -o -` → FFmpeg transcodes to PCM for Discord voice. Full diagrams:
+  **`playback-architecture.md`**.
+- **Auth:** none (optional cookie file on VM for hard cases).
 - **Key options:** `format=bestaudio/best`, `noplaylist=True`,
-  `default_search=ytsearch`, `source_address=0.0.0.0` (force IPv4, G-202).
+  `default_search=ytsearch`, `source_address=0.0.0.0` (force IPv4, G-202),
+  `remote_components=ejs:github` (signature solving).
+- **Oracle VM:** `YTDLP_PROXY` (WARP SOCKS), `YTDLP_IMPERSONATE`, POT provider.
 - **Fallback behavior:** on resolution failure, the engine skips the track with a
-  warning and continues (§5.2). Stream URLs expire, so they are re-resolved before
-  every play (G-006).
+  warning and continues (§5.2). Each play spawns a fresh yt-dlp stream from the
+  stored `webpage_url` (G-006).
 - **Maintenance:** YouTube changes break extraction periodically; keep yt-dlp
   updated (`pip install -U yt-dlp`).
 

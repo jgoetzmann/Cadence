@@ -17,6 +17,15 @@ from cadence.sources.youtube import YouTubeSource
 from tests.fakes import FakeGuild, FakeInteraction
 
 
+@pytest.fixture(autouse=True)
+def _stub_ytdl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Avoid constructing real YoutubeDL (impersonate/curl-cffi) in app wiring tests."""
+    monkeypatch.setattr(
+        "cadence.sources.youtube._get_ytdl",
+        lambda _config: MagicMock(),
+    )
+
+
 def test_build_app_returns_client_and_configures_logging() -> None:
     settings = Settings(
         token="test-token",

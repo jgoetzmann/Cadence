@@ -34,6 +34,14 @@ class AudioSource(Protocol):
         """Re-resolve a webpage URL into a fresh stream URL."""
         ...
 
+    async def create_playback_source(
+        self,
+        webpage_url: str,
+        volume: int,
+    ) -> discord.PCMVolumeTransformer[discord.AudioSource]:
+        """Build a Discord audio source for live playback of a webpage URL."""
+        ...
+
 
 @runtime_checkable
 class Player(Protocol):

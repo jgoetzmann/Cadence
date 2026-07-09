@@ -1,74 +1,18 @@
 # Cadence
 
-Self-hosted Discord music bot that streams audio from YouTube into voice channels via slash commands.
+Cadence is a self-hosted Discord music bot built for personal and small-community use. It streams audio from YouTube into voice channels through slash commands — join a channel, run `/play`, and the bot handles search, queueing, and playback. The project grew out of a working single-file prototype ([`bot.py`](bot.py)) and was restructured into a small, testable Python package so behavior stays predictable while the codebase stays easy to extend.
 
-## Requirements
+The stack is Python 3.11, discord.py 2.x, yt-dlp, and FFmpeg (a system binary, not a pip package). Voice encryption uses PyNaCl. All guild state — queues, volume, loop mode — lives in memory with no database; a restart clears everything by design. Configuration is env-based via `python-dotenv` (`DISCORD_TOKEN`, optional guild ID for fast command sync, log level, default volume).
 
-- Python 3.11+
-- [FFmpeg](https://ffmpeg.org/) on your `PATH` (system binary, not installed via pip)
-- A Discord bot token from the [Developer Portal](https://discord.com/developers/applications)
+Architecturally, [`cadence/app.py`](cadence/app.py) is the composition root: it wires the Discord client, slash commands, the playback [`Player`](cadence/player.py), and the [`YouTubeSource`](cadence/sources/youtube.py). YouTube uses a two-phase pipeline — in-process lookup to resolve a query into a canonical watch URL, then piped yt-dlp → FFmpeg → Discord voice PCM for streaming (never saving audio to disk). For deployment on Oracle Cloud Always-Free ARM, [`tools/oracle/manage.ps1`](tools/oracle/manage.ps1) provisions a VM with systemd, WARP, and a POT sidecar; see [`docs/playback-architecture.md`](docs/playback-architecture.md) for the full playback diagram.
 
-## Setup
+## Documentation
 
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env   # then edit .env with your token
-```
+- [Local setup](docs/setup.md)
+- [Oracle VM deployment](docs/oracle-setup.md)
+- [Playback architecture](docs/playback-architecture.md)
+- [Full specification](docs/overview.md)
 
-## Environment variables
+## License
 
-| Name | Scope | Required | Default | Example | Where to get it |
-|---|---|---|---|---|---|
-| `DISCORD_TOKEN` | runtime | yes | — | `MTIz...` | Discord Developer Portal → your app → Bot → Reset Token |
-| `DISCORD_GUILD_ID` | runtime | no | `None` (global sync) | `123456789012345678` | Right-click your server → Copy Server ID (Developer Mode on) |
-| `LOG_LEVEL` | runtime | no | `INFO` | `DEBUG` | Any stdlib logging level name |
-| `CADENCE_DEFAULT_VOLUME` | runtime | no | `50` | `40` | Integer 0–100; starting volume for new guilds |
-
-## Run
-
-```bash
-python -m cadence
-```
-
-## Lint, type-check, test
-
-```bash
-ruff check .
-mypy cadence
-pytest
-```
-
-Or use the Makefile:
-
-```bash
-make check   # lint + type + test
-make run     # start the bot
-```
-
-## Manual smoke test
-
-1. Set `DISCORD_TOKEN` (and optionally `DISCORD_GUILD_ID` for instant command sync) in `.env`.
-2. Invite the bot with `bot` and `applications.commands` scopes; grant Connect, Speak, and Send Messages.
-3. Run `python -m cadence` and confirm login plus command-sync log output.
-4. Join a voice channel in your server and run `/play <query>` — confirm audio starts and the bot replies.
-5. Run `/skip`, `/queue`, and `/stop` once each to verify basic controls.
-
-## Package layout
-
-```
-cadence/           # Python package
-  config.py        # Settings from env
-  state.py         # Track, GuildState, StateStore
-  interfaces.py    # AudioSource & Player protocols
-  client.py        # Discord client shell
-  app.py           # Composition root: build_app()
-  sources/         # Audio sources (YouTube)
-  commands/        # Slash commands
-tests/
-  unit/            # Per-module unit tests
-  integration/     # Cross-module tests
-docs/              # Spec, progress, conventions
-```
+MIT — see [LICENSE](LICENSE).

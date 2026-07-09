@@ -177,6 +177,7 @@ async def test_fake_audio_source_scripted_success_and_failure() -> None:
     source = FakeAudioSource(
         fetch_results=[track],
         resolve_results=[RuntimeError("resolve failed")],
+        playback_results=[object()],
     )
 
     fetched = await source.fetch("query", is_url=False)
@@ -186,6 +187,10 @@ async def test_fake_audio_source_scripted_success_and_failure() -> None:
     with pytest.raises(RuntimeError, match="resolve failed"):
         await source.resolve(track.webpage_url)
     assert source.resolve_calls == [track.webpage_url]
+
+    playback = await source.create_playback_source(track.webpage_url, 50)
+    assert playback is not None
+    assert source.playback_calls == [(track.webpage_url, 50)]
 
 
 @pytest.mark.asyncio

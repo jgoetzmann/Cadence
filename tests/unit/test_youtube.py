@@ -9,11 +9,19 @@ import pytest
 from cadence.interfaces import AudioSource, ResolvedTrack
 from cadence.sources import youtube as youtube_module
 from cadence.sources.youtube import (
+    DEFAULT_PLAYER_CLIENTS,
     FFMPEG_OPTS,
+    FFMPEG_PIPE_OPTS,
     SourceError,
+    YtDlpConfig,
     YouTubeSource,
+    _PrefixedReader,
+    _ytdlp_playback_command,
+    build_ytdl_opts,
     make_ffmpeg_source,
+    make_playback_source,
 )
+from yt_dlp.networking.impersonate import ImpersonateTarget
 from tests.fakes import (
     FakeYoutubeDL,
     patch_ytdl,
@@ -22,7 +30,111 @@ from tests.fakes import (
 )
 
 
-def test_youtube_source_satisfies_audio_source_protocol() -> None:
+def test_build_ytdl_opts_includes_cookie_file_when_set() -> None:
+    opts = build_ytdl_opts(YtDlpConfig(cookie_file="/opt/cadence/youtube_cookies.txt"))
+    assert opts["cookiefile"] == "/opt/cadence/youtube_cookies.txt"
+
+
+def test_build_ytdl_opts_omits_cookie_file_by_default() -> None:
+    opts = build_ytdl_opts()
+    assert "cookiefile" not in opts
+
+
+def test_build_ytdl_opts_includes_player_client_rotation() -> None:
+    opts = build_ytdl_opts()
+    assert opts["extractor_args"]["youtube"]["player_client"] == list(DEFAULT_PLAYER_CLIENTS)
+
+
+def test_build_ytdl_opts_includes_ejs_remote_components() -> None:
+    opts = build_ytdl_opts()
+    assert opts["remote_components"] == ["ejs:github"]
+
+
+def test_ffmpeg_pipe_opts_use_low_latency_flags() -> None:
+    assert "analyzeduration 0" in FFMPEG_PIPE_OPTS["before_options"]
+    assert "nobuffer" in FFMPEG_PIPE_OPTS["before_options"]
+
+
+def test_prefixed_reader_serves_prefix_before_stream() -> None:
+    import io
+
+    stream = io.BytesIO(b"world")
+    reader = _PrefixedReader(stream, b"hello ")
+    assert reader.read(3) == b"hel"
+    assert reader.read() == b"lo world"
+
+
+def test_ytdlp_playback_command_includes_proxy_and_impersonate() -> None:
+    cmd = _ytdlp_playback_command(
+        "https://www.youtube.com/watch?v=abc",
+        YtDlpConfig(
+            proxy="socks5h://127.0.0.1:1080",
+            impersonate="chrome",
+            cookie_file="/opt/cookies.txt",
+        ),
+    )
+    assert cmd[-1] == "https://www.youtube.com/watch?v=abc"
+    assert "--proxy" in cmd
+    assert "socks5h://127.0.0.1:1080" in cmd
+    assert "--impersonate" in cmd
+    assert "chrome" in cmd
+    assert "--cookies" in cmd
+    assert "/opt/cookies.txt" in cmd
+    assert f"youtube:player_client={','.join(DEFAULT_PLAYER_CLIENTS)}" in " ".join(cmd)
+
+
+def test_build_ytdl_opts_sets_proxy_and_impersonate_when_provided() -> None:
+    opts = build_ytdl_opts(
+        YtDlpConfig(
+            proxy="socks5h://127.0.0.1:1080",
+            impersonate="chrome",
+        ),
+    )
+    assert opts["proxy"] == "socks5h://127.0.0.1:1080"
+    assert opts["impersonate"] == ImpersonateTarget.from_str("chrome")
+
+
+def test_build_ytdl_opts_sets_socket_timeout() -> None:
+    opts = build_ytdl_opts()
+    assert opts["socket_timeout"] == 45
+
+
+def test_build_ytdl_opts_omits_proxy_and_impersonate_when_unset() -> None:
+    opts = build_ytdl_opts(YtDlpConfig(proxy=None, impersonate=None))
+    assert "proxy" not in opts
+    assert "impersonate" not in opts
+
+
+async def test_fetch_retries_without_impersonate_on_bot_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    class RecordingYDL:
+        def __init__(self, opts: dict[str, object]) -> None:
+            self._impersonate = opts.get("impersonate")
+
+        def extract_info(self, _target: str, *, download: bool) -> dict[str, object]:
+            nonlocal attempts
+            _ = download
+            attempts += 1
+            if self._impersonate is not None:
+                msg = "Sign in to confirm you're not a bot"
+                raise RuntimeError(msg)
+            return ytdl_entry()
+
+    monkeypatch.setattr(youtube_module, "_shared_ytdl", {})
+    monkeypatch.setattr(youtube_module.yt_dlp, "YoutubeDL", RecordingYDL)
+    source = YouTubeSource(YtDlpConfig(impersonate="chrome"))
+
+    track = await source.fetch("foo", is_url=False)
+
+    assert track.title == "Foo Song"
+    assert attempts == 2
+
+
+def test_youtube_source_is_audio_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_ytdl(monkeypatch, FakeYoutubeDL(results=[search_result()]))
     assert isinstance(YouTubeSource(), AudioSource)
 
 
@@ -146,7 +258,7 @@ async def test_fetch_wraps_ytdlp_exceptions_in_source_error(
             msg = "network down"
             raise RuntimeError(msg)
 
-    monkeypatch.setattr(youtube_module, "_shared_ytdl", None)
+    monkeypatch.setattr(youtube_module, "_shared_ytdl", {})
     monkeypatch.setattr(
         youtube_module.yt_dlp,
         "YoutubeDL",
@@ -170,6 +282,18 @@ def test_youtube_source_instances_share_one_ytdl(
     second = YouTubeSource()
 
     assert first._ytdl is second._ytdl
+
+
+def test_youtube_source_instances_with_different_configs_do_not_share_ytdl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeYoutubeDL(results=[search_result()])
+    patch_ytdl(monkeypatch, fake)
+
+    without_proxy = YouTubeSource(YtDlpConfig())
+    with_proxy = YouTubeSource(YtDlpConfig(proxy="socks5h://127.0.0.1:1080"))
+
+    assert without_proxy._ytdl is not with_proxy._ytdl
 
 
 async def test_blocking_extract_runs_off_event_loop(

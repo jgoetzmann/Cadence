@@ -5,7 +5,7 @@ From the project root (`Cadence`).
 ## One-time
 
 ```powershell
-cd "D:\Programming Projects\Personal\Cadence"
+cd path\to\cadence
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -21,7 +21,7 @@ FFmpeg must be on `PATH` (`winget install Gyan.FFmpeg` if needed).
 ## Start the bot
 
 ```powershell
-cd "D:\Programming Projects\Personal\Cadence"
+cd path\to\cadence
 $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
 .\.venv\Scripts\python.exe -m cadence
 ```
@@ -39,7 +39,7 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 ## Restart (stop + start)
 
 ```powershell
-cd "D:\Programming Projects\Personal\Cadence"
+cd path\to\cadence
 
 Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
   Where-Object { $_.CommandLine -like '*cadence*' } |

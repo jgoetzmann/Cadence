@@ -38,6 +38,10 @@ class _ConcreteAudioSource:
             stream_url="https://stream.example/audio",
         )
 
+    async def create_playback_source(self, webpage_url: str, volume: int) -> object:
+        _ = (webpage_url, volume)
+        return object()
+
 
 class _ConcretePlayer:
     async def enqueue(self, guild: object, track: Track) -> None:

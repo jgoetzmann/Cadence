@@ -81,7 +81,11 @@ Problem → solution format. Append as you discover more.
 - **`ffmpeg` not found / immediate silence** → FFmpeg is a system binary and must
   be on `PATH`; it is not installed via pip. Install via your OS package manager.
 - **Bot joins but produces no audio** → usually missing `PyNaCl`, a blocking call
-  on the event loop (G-003), or an expired stream URL not being re-resolved (G-006).
+  on the event loop (G-003), or playback failing after lookup (see
+  `playback-architecture.md §9`). On the VM, `googlevideo.com` 403 in logs means
+  an old direct-URL FFmpeg path — redeploy piped playback.
+- **First seconds of each song cut off** → yt-dlp pipe cold start; preroll buffer
+  in `make_playback_source` (`playback-architecture.md §5`).
 - **`InteractionResponded` / "application did not respond"** → you didn't `defer()`
   a slow handler within 3 seconds, or you replied twice (§13.3 in overview).
 - **Audio cuts out mid-song on network blips** → ensure FFmpeg `before_options`
@@ -111,9 +115,10 @@ Problem → solution format. Append as you discover more.
   discord coroutines or mutate discord objects directly from that thread.
 - **G-005** State is in-memory and resets on restart by design. Do not introduce a
   database or persistence without first changing `overview.md` (it is a v1 anti-goal).
-- **G-006** Re-resolve the stream URL immediately before every play. YouTube stream
-  URLs expire; never cache a `stream_url` across plays or loop cycles. Store the
-  `webpage_url` in the queue, not the stream URL.
+- **G-006** Store the `webpage_url` in the queue, not a CDN `stream_url` (which
+  expires and is IP-bound). Immediately before every play, stream audio from the
+  webpage URL via `create_playback_source` (piped yt-dlp → FFmpeg). Never hand
+  FFmpeg a signed `googlevideo.com` URL when a proxy is in use.
 - **G-007** Defer any interaction whose work may exceed 3 seconds (`/play`) with
   `interaction.response.defer()` before doing work, then reply via `followup`.
 
@@ -156,6 +161,9 @@ Problem → solution format. Append as you discover more.
   with an async `acceptance_ctx` fixture in `conftest.py` (uses
   `asyncio.get_running_loop()` — do not call `get_event_loop()` in a sync fixture).
   T3 owns `test_acceptance_*.py`; T2 owns `test_playback_flow.py`.
+- **G-207** (2026-07) Oracle VM playback uses **piped yt-dlp**
+  (`make_playback_source`), not direct FFmpeg-on-CDN-URL. Extraction smoke tests
+  (`test-urls`) do not prove Discord voice works. See `playback-architecture.md`.
 
 ---
 

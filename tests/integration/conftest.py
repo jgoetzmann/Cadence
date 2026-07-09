@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from tests.fakes import FakeYoutubeDL, patch_ytdl, ytdl_entry
@@ -18,7 +20,7 @@ __all__ = [
 
 @pytest.fixture
 def captured_stream_urls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Record stream URLs passed to FFmpegPCMAudio during a test."""
+    """Record stream URLs used during playback in integration tests."""
     urls: list[str] = []
 
     def fake_transformer(
@@ -32,8 +34,26 @@ def captured_stream_urls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         urls.append(stream_url)
         return f"pcm:{stream_url}"
 
-    monkeypatch.setattr("cadence.player.discord.FFmpegPCMAudio", fake_pcm)
-    monkeypatch.setattr("cadence.player.discord.PCMVolumeTransformer", fake_transformer)
+    def fake_make_playback(
+        webpage_url: str,
+        volume: int,
+        config: object,
+    ) -> FakePCMVolumeTransformer:
+        from cadence.sources.youtube import YtDlpConfig, _extract_with_fallback, make_ffmpeg_source
+
+        cfg = config if isinstance(config, YtDlpConfig) else YtDlpConfig()
+        resolved = _extract_with_fallback(cfg, webpage_url, search=False)
+        return cast(
+            FakePCMVolumeTransformer,
+            make_ffmpeg_source(resolved.stream_url, volume),
+        )
+
+    monkeypatch.setattr("cadence.sources.youtube.discord.FFmpegPCMAudio", fake_pcm)
+    monkeypatch.setattr(
+        "cadence.sources.youtube.discord.PCMVolumeTransformer",
+        fake_transformer,
+    )
+    monkeypatch.setattr("cadence.sources.youtube.make_playback_source", fake_make_playback)
     return urls
 
 

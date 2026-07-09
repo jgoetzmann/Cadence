@@ -33,6 +33,9 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DISCORD_GUILD_ID", raising=False)
     monkeypatch.delenv("LOG_LEVEL", raising=False)
     monkeypatch.delenv("CADENCE_DEFAULT_VOLUME", raising=False)
+    monkeypatch.delenv("YTDLP_COOKIE_FILE", raising=False)
+    monkeypatch.delenv("YTDLP_PROXY", raising=False)
+    monkeypatch.delenv("YTDLP_IMPERSONATE", raising=False)
 
 
 @pytest.fixture

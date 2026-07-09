@@ -88,6 +88,36 @@ def test_settings_repr_never_includes_token(monkeypatch: pytest.MonkeyPatch) -> 
     assert "token" not in text.lower()
 
 
+def test_ytdlp_cookie_file_optional(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISCORD_TOKEN", "test-token")
+    monkeypatch.setenv("YTDLP_COOKIE_FILE", "/opt/cadence/youtube_cookies.txt")
+    settings = Settings.load()
+    assert settings.ytdlp_cookie_file == "/opt/cadence/youtube_cookies.txt"
+
+
+def test_ytdlp_proxy_optional(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISCORD_TOKEN", "test-token")
+    settings = Settings.load()
+    assert settings.ytdlp_proxy is None
+
+    monkeypatch.setenv("YTDLP_PROXY", "socks5h://127.0.0.1:1080")
+    settings = Settings.load()
+    assert settings.ytdlp_proxy == "socks5h://127.0.0.1:1080"
+
+
+def test_ytdlp_impersonate_defaults_to_chrome(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISCORD_TOKEN", "test-token")
+    settings = Settings.load()
+    assert settings.ytdlp_impersonate == "chrome"
+
+
+def test_ytdlp_impersonate_empty_string_disables(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISCORD_TOKEN", "test-token")
+    monkeypatch.setenv("YTDLP_IMPERSONATE", "")
+    settings = Settings.load()
+    assert settings.ytdlp_impersonate is None
+
+
 def test_settings_str_matches_repr(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DISCORD_TOKEN", "test-token")
     settings = Settings.load()

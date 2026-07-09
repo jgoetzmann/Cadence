@@ -156,9 +156,12 @@ class Player:
             return
 
         try:
-            resolved = await self._source.resolve(track.webpage_url)
+            voice_source = await self._source.create_playback_source(
+                track.webpage_url,
+                state.volume,
+            )
         except Exception:
-            log.exception("Failed to resolve stream for %s", track.webpage_url)
+            log.exception("Failed to start playback for %s", track.webpage_url)
             if state.text_channel is not None:
                 await state.text_channel.send(
                     f"⚠️ Skipping **{track.title}** (couldn't load audio)."
@@ -168,7 +171,6 @@ class Player:
             await self.play_next(guild)
             return
 
-        voice_source = self._build_voice_source(resolved.stream_url, state.volume)
         state.voice_source = voice_source
         vc.play(voice_source, after=self._make_after(guild))
         if self._on_song_started is not None:
@@ -265,19 +267,6 @@ class Player:
             queue.extend(queue_list)
         else:
             queue.appendleft(track)
-
-    def _build_voice_source(
-        self,
-        stream_url: str,
-        volume: int,
-    ) -> discord.PCMVolumeTransformer[discord.AudioSource]:
-        """Build an FFmpeg PCM source wrapped in a volume transformer."""
-        pcm = discord.FFmpegPCMAudio(
-            stream_url,
-            before_options=FFMPEG_OPTS["before_options"],
-            options=FFMPEG_OPTS["options"],
-        )
-        return discord.PCMVolumeTransformer(pcm, volume=volume / 100)
 
     def _make_after(self, guild: discord.Guild) -> Callable[[Exception | None], None]:
         """Return the FFmpeg after-callback that schedules the next track."""

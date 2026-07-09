@@ -14,7 +14,7 @@ from cadence.config import Settings
 from cadence.idle import IdleManager
 from cadence.logging_setup import configure_logging
 from cadence.player import Player
-from cadence.sources.youtube import YouTubeSource
+from cadence.sources.youtube import YtDlpConfig, YouTubeSource
 from cadence.state import StateStore
 
 __all__ = ["build_app"]
@@ -29,7 +29,13 @@ def build_app(settings: Settings | None = None) -> discord.Client:
     client, tree = build_client(resolved)
 
     store = StateStore(default_volume=resolved.default_volume)
-    source = YouTubeSource()
+    source = YouTubeSource(
+        YtDlpConfig(
+            cookie_file=resolved.ytdlp_cookie_file,
+            proxy=resolved.ytdlp_proxy,
+            impersonate=resolved.ytdlp_impersonate,
+        ),
+    )
     idle_manager = IdleManager(client, store)
     player = Player(client, store, source, on_song_started=idle_manager.record_song_started)
     idle_manager.set_player(player)

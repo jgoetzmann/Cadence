@@ -39,6 +39,11 @@ class FakePCMVolumeTransformer:
     volume: float = 1.0
 
 
+def playback_source_for(*, volume: int = 50) -> FakePCMVolumeTransformer:
+    """Build a fake playback source for Player unit tests."""
+    return FakePCMVolumeTransformer(source="playback", volume=volume / 100)
+
+
 def resolved_track_for(
     track: Track,
     *,
@@ -113,13 +118,13 @@ async def test_play_next_pops_queue_plays_and_posts_now_playing(
         requested_by=42,
     )
     state.queue.append(track)
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
 
     await player.play_next(guild)
 
     assert state.current == track
     assert len(state.queue) == 0
-    assert source.resolve_calls == [track.webpage_url]
+    assert source.playback_calls == [(track.webpage_url, 50)]
     assert fake_guild.voice_client is not None
     assert fake_guild.voice_client.source is not None
     assert state.voice_source is not None
@@ -147,7 +152,7 @@ async def test_play_next_skips_announce_when_requested(
         requested_by=42,
     )
     state.queue.append(track)
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
 
     await player.play_next(guild, announce=False)
 
@@ -175,7 +180,7 @@ async def test_play_next_loop_replays_without_now_playing(
     )
     state.current = track
     state.loop_mode = LoopMode.TRACK
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
 
     await player.play_next(guild)
 
@@ -227,7 +232,7 @@ async def test_play_next_resolve_failure_skips_and_advances(
     bad = Track(title="Bad", webpage_url="https://bad.example", requested_by=1)
     good = Track(title="Good", webpage_url="https://good.example", requested_by=2)
     state.queue.extend([bad, good])
-    source.resolve_results = deque([RuntimeError("resolve failed"), resolved_track_for(good)])
+    source.playback_results = deque([RuntimeError("playback failed"), playback_source_for()])
 
     await player.play_next(guild)
 
@@ -253,9 +258,9 @@ async def test_after_schedules_play_next_via_run_coroutine_threadsafe(
     track2 = Track(title="B", webpage_url="https://b.example", requested_by=2)
     state = store.get(fake_guild.id)
     state.queue.extend([track, track2])
-    source.resolve_results = deque([
-        resolved_track_for(track),
-        resolved_track_for(track2),
+    source.playback_results = deque([
+        playback_source_for(),
+        playback_source_for(),
     ])
     scheduled: list[asyncio.Future[object]] = []
 
@@ -271,7 +276,10 @@ async def test_after_schedules_play_next_via_run_coroutine_threadsafe(
 
     assert len(scheduled) == 1
     await scheduled[0]
-    assert source.resolve_calls == [track.webpage_url, track2.webpage_url]
+    assert source.playback_calls == [
+        (track.webpage_url, 50),
+        (track2.webpage_url, 50),
+    ]
     assert state.current == track2
 
 
@@ -288,7 +296,7 @@ async def test_after_logs_playback_error(
     guild = guild_as_discord(fake_guild)
     track = Track(title="A", webpage_url="https://a.example", requested_by=1)
     store.get(fake_guild.id).queue.append(track)
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
 
     with caplog.at_level(logging.ERROR):
         await player.play_next(guild)
@@ -314,7 +322,7 @@ async def test_skip_disables_track_loop_and_advances(
     state.current = current
     state.loop_mode = LoopMode.TRACK
     state.queue.append(nxt)
-    source.resolve_results = deque([resolved_track_for(current), resolved_track_for(nxt)])
+    source.playback_results = deque([playback_source_for(), playback_source_for()])
 
     await player.play_next(guild)
 
@@ -332,7 +340,10 @@ async def test_skip_disables_track_loop_and_advances(
 
     assert state.loop_mode is LoopMode.OFF
     assert state.current == nxt
-    assert source.resolve_calls == [current.webpage_url, nxt.webpage_url]
+    assert source.playback_calls == [
+        (current.webpage_url, 50),
+        (nxt.webpage_url, 50),
+    ]
 
 
 @pytest.mark.asyncio
@@ -350,7 +361,7 @@ async def test_skip_requeues_current_under_queue_loop(
     state = store.get(fake_guild.id)
     state.loop_mode = LoopMode.QUEUE
     state.queue.extend([current, nxt])
-    source.resolve_results = deque([resolved_track_for(current), resolved_track_for(nxt)])
+    source.playback_results = deque([playback_source_for(), playback_source_for()])
 
     await player.play_next(guild)
     assert state.current == current
@@ -385,7 +396,7 @@ async def test_skip_while_paused_advances(
     nxt = Track(title="Next", webpage_url="https://next.example", requested_by=2)
     state = store.get(fake_guild.id)
     state.queue.extend([current, nxt])
-    source.resolve_results = deque([resolved_track_for(current), resolved_track_for(nxt)])
+    source.playback_results = deque([playback_source_for(), playback_source_for()])
 
     await player.play_next(guild)
     await player.pause(guild)
@@ -434,7 +445,7 @@ async def test_pause_and_resume_call_voice_client(
     guild = guild_as_discord(fake_guild)
     track = Track(title="A", webpage_url="https://a.example", requested_by=1)
     store.get(fake_guild.id).queue.append(track)
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
 
     await player.pause(guild)
     assert fake_voice_client.is_playing() is False
@@ -459,7 +470,7 @@ async def test_set_volume_clamps_and_updates_live_source(
     guild = guild_as_discord(fake_guild)
     track = Track(title="A", webpage_url="https://a.example", requested_by=1)
     store.get(fake_guild.id).queue.append(track)
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
 
     await player.play_next(guild)
     player.set_volume(guild, 150)
@@ -488,7 +499,7 @@ async def test_stop_clears_state_and_disconnects(
     state.queue.append(track)
     state.current = track
     state.loop_mode = LoopMode.TRACK
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
     await player.play_next(guild)
 
     await player.stop(guild)
@@ -550,7 +561,7 @@ async def test_play_next_no_voice_client_is_noop(
 
     await player.play_next(guild)
 
-    assert source.resolve_calls == []
+    assert source.playback_calls == []
 
 
 @pytest.mark.asyncio
@@ -718,7 +729,7 @@ async def test_play_next_queue_loop_cycles_and_replays_when_empty(
     state.current = current
     state.loop_mode = LoopMode.QUEUE
     state.queue.append(nxt)
-    source.resolve_results = deque([resolved_track_for(nxt), resolved_track_for(current)])
+    source.playback_results = deque([playback_source_for(), playback_source_for()])
 
     await player.play_next(guild)
 
@@ -727,7 +738,7 @@ async def test_play_next_queue_loop_cycles_and_replays_when_empty(
 
     state.current = current
     state.queue.clear()
-    source.resolve_results.append(resolved_track_for(current))
+    source.playback_results.append(playback_source_for())
     await player.play_next(guild)
 
     assert state.current == current
@@ -753,7 +764,7 @@ async def test_play_next_queue_shuffle_reinserts_not_at_front(
     state.loop_mode = LoopMode.QUEUE_SHUFFLE
     state.queue.extend([b, c])
     monkeypatch.setattr("cadence.player.random.randint", lambda _a, _b: 2)
-    source.resolve_results = deque([resolved_track_for(b)])
+    source.playback_results = deque([playback_source_for()])
 
     await player.play_next(guild)
 
@@ -821,7 +832,7 @@ async def test_play_next_invokes_on_song_started_callback(
     guild = guild_as_discord(fake_guild)
     track = Track(title="A", webpage_url="https://a.example", requested_by=1)
     store.get(fake_guild.id).queue.append(track)
-    source.resolve_results = deque([resolved_track_for(track)])
+    source.playback_results = deque([playback_source_for()])
 
     await player.play_next(guild)
 

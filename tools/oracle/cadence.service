@@ -1,0 +1,23 @@
+[Unit]
+Description=Cadence Discord Music Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/cadence
+Environment=PATH=/home/ubuntu/.deno/bin:/opt/cadence/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=/opt/cadence/.env
+ExecStart=/opt/cadence/.venv/bin/python -m cadence
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/opt/cadence
+
+[Install]
+WantedBy=multi-user.target

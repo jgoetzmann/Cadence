@@ -462,7 +462,7 @@ async def test_resolve_failure_raises_source_error_through_player(
             msg = "network down"
             raise RuntimeError(msg)
 
-    monkeypatch.setattr(youtube_module, "_shared_ytdl", None)
+    monkeypatch.setattr(youtube_module, "_shared_ytdl", {})
     monkeypatch.setattr(
         youtube_module.yt_dlp,
         "YoutubeDL",

@@ -49,6 +49,20 @@ def _parse_default_volume(raw: str | None) -> int:
         raise ConfigError(msg) from exc
 
 
+def _optional_env(raw: str | None) -> str | None:
+    if raw is None or raw == "":
+        return None
+    return raw
+
+
+def _parse_ytdlp_impersonate(raw: str | None) -> str | None:
+    if raw is None:
+        return "chrome"
+    if raw == "":
+        return None
+    return raw
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Runtime settings loaded from environment variables."""
@@ -57,6 +71,9 @@ class Settings:
     guild_id: int | None
     log_level: int
     default_volume: int
+    ytdlp_cookie_file: str | None = None
+    ytdlp_proxy: str | None = None
+    ytdlp_impersonate: str | None = "chrome"
 
     def __repr__(self) -> str:
         return (
@@ -81,4 +98,7 @@ class Settings:
             guild_id=_parse_guild_id(os.environ.get("DISCORD_GUILD_ID")),
             log_level=_parse_log_level(os.environ.get("LOG_LEVEL")),
             default_volume=_parse_default_volume(os.environ.get("CADENCE_DEFAULT_VOLUME")),
+            ytdlp_cookie_file=_optional_env(os.environ.get("YTDLP_COOKIE_FILE")),
+            ytdlp_proxy=_optional_env(os.environ.get("YTDLP_PROXY")),
+            ytdlp_impersonate=_parse_ytdlp_impersonate(os.environ.get("YTDLP_IMPERSONATE")),
         )
