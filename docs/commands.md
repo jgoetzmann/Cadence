@@ -1,10 +1,7 @@
-# Cadence — Command reference
+# Command reference
 
-This document is the in-depth guide to every Cadence slash command: what each one
-does, when to use it, how it interacts with queue state, loop modes, and idle
-timeouts, and what replies or errors you should expect.
-
-For a short summary inside Discord, use `/help`.
+Slash commands: behavior, queue rules, loop modes, idle timeouts, and errors.
+In Discord, `/help` is the short version.
 
 **Requirements common to most commands**
 

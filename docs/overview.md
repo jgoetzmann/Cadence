@@ -1,11 +1,9 @@
 # Cadence — Overview & Specification
 
-> Master source of truth for the Cadence Discord music bot.
-> Every other scaffolding file derives from this document.
-> Cite sections as `overview.md §6.2`.
+> **Internal / historical.** Design spec used while building Cadence. For day-to-day
+> use, prefer the [README](../README.md), [commands](commands.md), and [setup](setup.md).
 
-**Status:** v1.0.0 · **Stack:** Python 3.11, discord.py 2.x, yt-dlp, FFmpeg
-**Audience:** self-hosted, personal / small-community use · **Persistence:** none (in-memory)
+**Stack:** Python 3.11, discord.py 2.x, yt-dlp, FFmpeg · **Persistence:** none (in-memory)
 
 ---
 

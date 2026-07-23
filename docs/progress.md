@@ -1,7 +1,9 @@
 # Cadence — Progress (execution plan)
 
+> **Internal / historical.** Build checklist from the original multi-agent scaffolding.
+> Not required to run or contribute to Cadence.
+
 > Status keys: `[ ]` not started · `[~]` in progress · `[x]` complete · `[!]` blocked
-> Update at the end of every agent session. Never delete tasks. Never renumber IDs.
 
 ## How to use
 

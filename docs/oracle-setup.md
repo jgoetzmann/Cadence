@@ -1,14 +1,12 @@
-# Cadence — Oracle VM deployment (runbook)
+# Oracle VM deployment
 
-> Deploys and runs Cadence on an Oracle Cloud **Always-Free ARM** instance
-> (Ampere A1, Ubuntu 24.04, aarch64). Companion to `setup.md` (local dev on
-> Windows). `overview.md` and `remember.md` remain the source of truth for the
-> app itself; nothing here changes the bot's design or its runtime env vars
-> (`remember.md §2`).
->
-> Oracle's free tier has **no support**, so everything here is scripted,
-> idempotent, and self-diagnosing. The toolkit (`tools/oracle/manage.ps1`) is
-> the single entrypoint for every remote action.
+Deploys Cadence on an Oracle Cloud **Always-Free ARM** instance (Ampere A1, Ubuntu 24.04). Local Windows setup is in [`setup.md`](setup.md). Playback details: [`playback-architecture.md`](playback-architecture.md).
+
+All remote actions go through PowerShell:
+
+```powershell
+.\tools\oracle\manage.ps1 <command>
+```
 
 ---
 

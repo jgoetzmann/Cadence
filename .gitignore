@@ -12,3 +12,14 @@ dist/
 .coverage
 htmlcov/
 keys/
+
+# Credential / key material (defense in depth; prefer keys/)
+*.key
+*.pem
+*.ppk
+id_rsa*
+id_ed25519*
+*cookies*.txt
+credentials.json
+secrets.json
+service-account*.json

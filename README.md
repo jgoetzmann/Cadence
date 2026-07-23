@@ -1,17 +1,54 @@
 # Cadence
 
-Cadence is a self-hosted Discord music bot built for personal and small-community use. It streams audio from YouTube into voice channels through slash commands — join a channel, run `/play`, and the bot handles search, queueing, and playback. The project grew out of a working single-file prototype ([`bot.py`](bot.py)) and was restructured into a small, testable Python package so behavior stays predictable while the codebase stays easy to extend.
+Self-hosted Discord music bot. Streams YouTube audio into voice channels via slash commands (`/play`, queue, volume, loop). State is in-memory — a restart clears queues by design.
 
-The stack is Python 3.11, discord.py 2.x, yt-dlp, and FFmpeg (a system binary, not a pip package). Voice encryption uses PyNaCl. All guild state — queues, volume, loop mode — lives in memory with no database; a restart clears everything by design. Configuration is env-based via `python-dotenv` (`DISCORD_TOKEN`, optional guild ID for fast command sync, log level, default volume).
+## Stack
 
-Architecturally, [`cadence/app.py`](cadence/app.py) is the composition root: it wires the Discord client, slash commands, the playback [`Player`](cadence/player.py), and the [`YouTubeSource`](cadence/sources/youtube.py). YouTube uses a two-phase pipeline — in-process lookup to resolve a query into a canonical watch URL, then piped yt-dlp → FFmpeg → Discord voice PCM for streaming (never saving audio to disk). For deployment on Oracle Cloud Always-Free ARM, [`tools/oracle/manage.ps1`](tools/oracle/manage.ps1) provisions a VM with systemd, WARP, and a POT sidecar; see [`docs/playback-architecture.md`](docs/playback-architecture.md) for the full playback diagram.
+| | |
+|---|---|
+| Language | Python 3.11+ |
+| Discord | [discord.py](https://github.com/Rapptz/discord.py) 2.x + PyNaCl (voice) |
+| Audio | [yt-dlp](https://github.com/yt-dlp/yt-dlp) → FFmpeg (system binary) → Discord PCM |
+| Config | `.env` via python-dotenv |
 
-## Documentation
+No database. Optional Oracle Cloud deploy tooling lives under `tools/oracle/`.
 
+## Setup
+
+Windows examples use **PowerShell**. FFmpeg must be on `PATH` (`winget install Gyan.FFmpeg`).
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+# Set DISCORD_TOKEN (and optional DISCORD_GUILD_ID) in .env
+python -m cadence
+```
+
+More detail (start/stop, single-instance lock): [docs/setup.md](docs/setup.md).
+
+## Tests
+
+```powershell
+pip install -r requirements-dev.txt
+pytest          # or: make test
+make check      # ruff + mypy + pytest
+```
+
+Oracle VM smoke checks (remote health / yt-dlp) are PowerShell entrypoints:
+
+```powershell
+.\tools\oracle\manage.ps1 test
+.\tools\oracle\manage.ps1 test-ytdlp
+```
+
+## Docs
+
+- [Slash commands](docs/commands.md)
 - [Local setup](docs/setup.md)
-- [Oracle VM deployment](docs/oracle-setup.md)
 - [Playback architecture](docs/playback-architecture.md)
-- [Full specification](docs/overview.md)
+- [Oracle VM deploy](docs/oracle-setup.md) (optional)
 
 ## License
 

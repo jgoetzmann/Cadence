@@ -1,16 +1,13 @@
 # Cadence — Remember (conventions + guardrails)
 
-> Read this in full at the start of every session, alongside `overview.md` and
-> `progress.md`. **Add new entries at the bottom of each section. Never delete —
-> strike through outdated entries** (e.g. ~~old rule~~ → reason).
-> Guardrail IDs are stable forever: `G-001`, `G-101`, `G-201`.
+> **Internal / historical.** Dev notes and guardrails from the original build.
+> Stack and env vars here may lag `pyproject.toml` / `.env.example` — prefer those.
 
 ---
 
 ## 1. Stack & versions
 
-You (the operator) did not pick these — the scaffolding did. Pin in `pyproject.toml`
-and the requirements files.
+Pinned in `pyproject.toml` and the requirements files.
 
 | Component | Version / choice | Notes |
 |---|---|---|

@@ -1,8 +1,6 @@
-# Cadence — YouTube playback architecture
+# YouTube playback architecture
 
-> How `/play` turns a search query into audio in a Discord voice channel.
-> Companion to `overview.md §5.2` and `oracle-setup.md`. Cite as
-> `playback-architecture.md §N`.
+How `/play` turns a search query into audio in a Discord voice channel. Related: [Oracle deploy](oracle-setup.md).
 
 **Stack:** Python 3.11 · discord.py 2.x · yt-dlp · FFmpeg · WARP SOCKS · POT provider
 
