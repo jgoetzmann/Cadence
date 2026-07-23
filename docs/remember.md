@@ -118,6 +118,9 @@ Problem → solution format. Append as you discover more.
   FFmpeg a signed `googlevideo.com` URL when a proxy is in use.
 - **G-007** Defer any interaction whose work may exceed 3 seconds (`/play`) with
   `interaction.response.defer()` before doing work, then reply via `followup`.
+- **G-008** Never paste private key material, cookie file contents, or raw tokens into
+  `.env`. Store SSH keys and cookie exports as files under `keys/` (gitignored) and
+  reference them by path only (`ORACLE_SSH_KEY`, `YTDLP_COOKIE_FILE`, etc.).
 
 ---
 

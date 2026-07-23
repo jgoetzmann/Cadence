@@ -17,9 +17,12 @@ keys/
 *.key
 *.pem
 *.ppk
+*.p12
+*.pfx
 id_rsa*
 id_ed25519*
 *cookies*.txt
+youtube_cookies.txt
 credentials.json
 secrets.json
 service-account*.json

@@ -50,7 +50,7 @@ The toolkit reads connection details — including the **paths** to your SSH key
 |---|---|---|
 | `ORACLE_HOST` | `203.0.113.10` | VM public IPv4 |
 | `ORACLE_USER` | `ubuntu` | Default user on the Ubuntu image |
-| `ORACLE_SSH_KEY` | `C:\path\to\cadence\keys\oracle-vm-ssh-priv-key.key` | **Path** to the PRIVATE key (local only) |
+| `ORACLE_SSH_KEY` | `C:\path\to\cadence\keys\oracle-vm-ssh-priv-key.key` | **Path** to the PRIVATE key (local only) — never paste the key body into `.env` |
 | `ORACLE_SSH_PUB` | `C:\path\to\cadence\keys\oracle-vm-ssh-pub-key.pub` | **Path** to the public key (optional) |
 
 These `ORACLE_*` vars are consumed **only by the toolkit** — `cadence/config.py`

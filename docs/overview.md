@@ -397,7 +397,7 @@ Loaded by `cadence/config.py` (via `python-dotenv` for local `.env`). Must match
 
 | Name | Scope | Required | Default | Example | Where to get it |
 |---|---|---|---|---|---|
-| `DISCORD_TOKEN` | runtime | yes | — | `MTIz...` | Discord Developer Portal → your app → Bot → Reset Token |
+| `DISCORD_TOKEN` | runtime | yes | — | `your-token-here` | Discord Developer Portal → your app → Bot → Reset Token |
 | `DISCORD_GUILD_ID` | runtime | no | `None` (global sync) | `123456789012345678` | Right-click your server → Copy Server ID (Developer Mode on) |
 | `LOG_LEVEL` | runtime | no | `INFO` | `DEBUG` | Any stdlib logging level name |
 | `CADENCE_DEFAULT_VOLUME` | runtime | no | `50` | `40` | Integer 0–100; starting volume for new guilds |

@@ -32,6 +32,8 @@ Copy-Item .env.example .env
 python -m cadence
 ```
 
+Keep `.env` and anything under `keys/` out of git (already gitignored). Use file paths for SSH keys/cookies — never paste key material into `.env`.
+
 More detail (start/stop, single-instance lock): [docs/setup.md](docs/setup.md).
 
 ## Tests
