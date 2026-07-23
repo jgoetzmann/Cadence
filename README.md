@@ -2,6 +2,12 @@
 
 Self-hosted Discord music bot. Streams YouTube audio into voice channels via slash commands (`/play`, queue, volume, loop). State is in-memory — a restart clears queues by design.
 
+## Intended use
+
+Cadence is **source you run yourself** — for personal use or a small private server. It is **not** a public invite-and-play bot, and this project does not host one for general Discord.
+
+YouTube playback uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) (not YouTube’s official API). Extraction can break, get blocked, or conflict with YouTube’s terms; if you run the bot, that risk is yours. Prefer official Discord bot tokens only (no user-token / self-bot setups).
+
 ## Stack
 
 | | |
