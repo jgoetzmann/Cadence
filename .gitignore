@@ -26,3 +26,10 @@ youtube_cookies.txt
 credentials.json
 secrets.json
 service-account*.json
+
+# Internal build notes / superseded prototype (kept locally, not published)
+.cursor/
+docs/overview.md
+docs/progress.md
+docs/remember.md
+bot.py

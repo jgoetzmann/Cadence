@@ -24,7 +24,7 @@ def _collect_story_ids_from_docstrings(module_path: Path) -> set[str]:
 
 
 def test_t3_08_all_user_stories_referenced_in_acceptance_tests() -> None:
-    """T3-08: every US-# in overview.md §3 is referenced by at least one acceptance test."""
+    """T3-08: every US-# user story is referenced by at least one acceptance test."""
     integration_dir = Path(__file__).resolve().parent
     acceptance_modules = sorted(integration_dir.glob("test_acceptance_*.py"))
     assert acceptance_modules, "expected at least one test_acceptance_*.py module"

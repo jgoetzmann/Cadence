@@ -54,7 +54,7 @@ The toolkit reads connection details — including the **paths** to your SSH key
 | `ORACLE_SSH_PUB` | `C:\path\to\cadence\keys\oracle-vm-ssh-pub-key.pub` | **Path** to the public key (optional) |
 
 These `ORACLE_*` vars are consumed **only by the toolkit** — `cadence/config.py`
-does not read them, so they don't affect `remember.md §2` / `overview.md §10`.
+does not read them, so they never reach the bot process.
 
 > **The key path, not the key.** `.env` stores the *path* to the private key.
 > The private key file itself is used locally to authenticate SSH and is **never
@@ -128,7 +128,7 @@ enables start-on-boot:
 3. Ensure inbound **SSH** is allowed in the local `iptables` chain (usually
    already true — you're connected over it).
 4. Install **uv**, then a pinned, prebuilt **Python 3.11** for aarch64
-   (`uv python install 3.11`). This matches the tested target (`remember.md §1`)
+   (`uv python install 3.11`). This matches the tested target (Python 3.11)
    without depending on deadsnakes having an ARM build.
 5. Clone/update the repo into `/opt/cadence` and build `.venv` from Python 3.11,
    installing `requirements.txt` with the venv's own `pip` (identical resolution
@@ -215,7 +215,7 @@ is absent. `YTDLP_PROXY` defaults to `socks5h://127.0.0.1:1080` and
 
 ---
 
-## 8. Gotchas (append to `remember.md §6` as you hit them)
+## 8. Gotchas
 
 - **Token works locally but the VM bot fails to log in** → CRLF line endings in
   `/opt/cadence/.env`. systemd's `EnvironmentFile` keeps the trailing `\r`, so the

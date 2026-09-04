@@ -383,7 +383,5 @@ tools/oracle/
 
 ## 12. Related docs
 
-- `overview.md §5.2` — playback engine behaviour (queue, loop, after-callback)
 - `oracle-setup.md` — VM provisioning and operator runbook
 - `commands.md` — slash command UX
-- `remember.md §6` — gotchas (G-006 updated for webpage URL storage)

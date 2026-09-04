@@ -4,9 +4,9 @@ Self-hosted Discord music bot. Streams YouTube audio into voice channels via sla
 
 ## Intended use
 
-Cadence is **source you run yourself** — for personal use or a small private server. It is **not** a public invite-and-play bot, and this project does not host one for general Discord.
+Cadence is **source you run yourself**, for personal use or a small private server. It is not a public invite-and-play bot, and nothing here is hosted for general Discord.
 
-YouTube playback uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) (not YouTube’s official API). Extraction can break, get blocked, or conflict with YouTube’s terms; if you run the bot, that risk is yours. Prefer official Discord bot tokens only (no user-token / self-bot setups).
+Playback goes through [yt-dlp](https://github.com/yt-dlp/yt-dlp), not YouTube's official API: extraction can break, get blocked, or conflict with YouTube's terms, and that risk is yours. Use an official Discord bot token — never a user token.
 
 ## Stack
 
@@ -17,7 +17,7 @@ YouTube playback uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) (not YouTube’
 | Audio | [yt-dlp](https://github.com/yt-dlp/yt-dlp) → FFmpeg (system binary) → Discord PCM |
 | Config | `.env` via python-dotenv |
 
-No database. Optional Oracle Cloud deploy tooling lives under `tools/oracle/`.
+No database. Optional Oracle Cloud deploy tooling lives in `tools/oracle/`.
 
 ## Setup
 
@@ -32,9 +32,9 @@ Copy-Item .env.example .env
 python -m cadence
 ```
 
-Keep `.env` and anything under `keys/` out of git (already gitignored). Use file paths for SSH keys/cookies — never paste key material into `.env`.
+`.env` and `keys/` are gitignored — keep them that way. Point at SSH keys and cookies by file path; never paste key material into `.env`.
 
-More detail (start/stop, single-instance lock): [docs/setup.md](docs/setup.md).
+Start/stop and the single-instance lock: [docs/setup.md](docs/setup.md).
 
 ## Tests
 
@@ -44,7 +44,7 @@ pytest          # or: make test
 make check      # ruff + mypy + pytest
 ```
 
-Oracle VM smoke checks (remote health / yt-dlp) are PowerShell entrypoints:
+Oracle VM smoke checks (remote health, yt-dlp) run through PowerShell:
 
 ```powershell
 .\tools\oracle\manage.ps1 test
