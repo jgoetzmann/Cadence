@@ -45,6 +45,11 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+# yt-dlp ships no type information; treat it as untyped rather than pinning stubs.
+[[tool.mypy.overrides]]
+module = ["yt_dlp.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

@@ -14,7 +14,7 @@ from cadence.config import Settings
 from cadence.idle import IdleManager
 from cadence.logging_setup import configure_logging
 from cadence.player import Player
-from cadence.sources.youtube import YtDlpConfig, YouTubeSource
+from cadence.sources.youtube import YouTubeSource, YtDlpConfig
 from cadence.state import StateStore
 
 __all__ = ["build_app"]

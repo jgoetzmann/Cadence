@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import subprocess
 import threading
+from typing import Any, cast
 
 import pytest
+from yt_dlp.networking.impersonate import ImpersonateTarget
 
 from cadence.interfaces import AudioSource, ResolvedTrack
 from cadence.sources import youtube as youtube_module
@@ -13,15 +18,16 @@ from cadence.sources.youtube import (
     FFMPEG_OPTS,
     FFMPEG_PIPE_OPTS,
     SourceError,
-    YtDlpConfig,
     YouTubeSource,
+    YtDlpConfig,
+    _ManagedPipeSource,
     _PrefixedReader,
+    _read_first_playback_chunk,
     _ytdlp_playback_command,
     build_ytdl_opts,
     make_ffmpeg_source,
     make_playback_source,
 )
-from yt_dlp.networking.impersonate import ImpersonateTarget
 from tests.fakes import (
     FakeYoutubeDL,
     patch_ytdl,
@@ -56,8 +62,6 @@ def test_ffmpeg_pipe_opts_use_low_latency_flags() -> None:
 
 
 def test_prefixed_reader_serves_prefix_before_stream() -> None:
-    import io
-
     stream = io.BytesIO(b"world")
     reader = _PrefixedReader(stream, b"hello ")
     assert reader.read(3) == b"hel"
@@ -362,3 +366,249 @@ async def test_fetch_search_uses_ytsearch_prefix(
     await source.fetch("some terms", is_url=False)
 
     assert fake.calls == [("ytsearch1:some terms", False)]
+
+
+class _FakeProcess:
+    """Stands in for the yt-dlp `subprocess.Popen` handle."""
+
+    def __init__(
+        self,
+        *,
+        stdout: object = None,
+        stderr: object = None,
+        poll_results: list[int | None] | None = None,
+        returncode: int | None = 0,
+        wait_raises: bool = False,
+    ) -> None:
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+        self._poll_results = poll_results if poll_results is not None else [None]
+        self.kill_calls = 0
+        self.wait_calls = 0
+        self._wait_raises = wait_raises
+
+    def poll(self) -> int | None:
+        if len(self._poll_results) > 1:
+            return self._poll_results.pop(0)
+        return self._poll_results[0]
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls += 1
+        if self._wait_raises:
+            self._wait_raises = False
+            raise subprocess.TimeoutExpired(cmd="yt-dlp", timeout=timeout or 0)
+        return self.returncode or 0
+
+
+def test_prefixed_reader_reads_straight_from_stream_once_prefix_is_drained() -> None:
+    reader = _PrefixedReader(io.BytesIO(b"world"), b"hi ")
+
+    assert reader.readable() is True
+    assert reader.read(3) == b"hi "
+    assert reader.read(2) == b"wo"
+    assert reader.read() == b"rld"
+
+
+def test_prefixed_reader_sized_read_spans_prefix_and_stream() -> None:
+    reader = _PrefixedReader(io.BytesIO(b"world"), b"hi ")
+
+    assert reader.read(5) == b"hi wo"
+
+
+def test_read_first_playback_chunk_returns_once_min_bytes_are_buffered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(youtube_module.os, "name", "nt")
+    process = _FakeProcess()
+
+    data = _read_first_playback_chunk(io.BytesIO(b"a" * 64), process, min_bytes=16)
+
+    assert data == b"a" * 64
+
+
+def test_read_first_playback_chunk_stops_early_when_ytdlp_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(youtube_module.os, "name", "nt")
+    process = _FakeProcess(poll_results=[1])
+
+    data = _read_first_playback_chunk(io.BytesIO(b"short"), process, min_bytes=4096)
+
+    assert data == b"short"
+
+
+def test_read_first_playback_chunk_retries_while_ytdlp_is_still_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(youtube_module.os, "name", "nt")
+    sleeps: list[float] = []
+    monkeypatch.setattr(youtube_module.time, "sleep", sleeps.append)
+    stream = io.BytesIO(b"")
+    process = _FakeProcess(poll_results=[None, 0])
+
+    with pytest.raises(SourceError):
+        _read_first_playback_chunk(stream, process, min_bytes=4096)
+
+    assert sleeps == [0.05]
+
+
+def test_read_first_playback_chunk_raises_when_no_audio_arrives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(youtube_module.os, "name", "nt")
+    process = _FakeProcess(poll_results=[1])
+
+    with pytest.raises(SourceError, match="Timed out waiting for playback audio stream"):
+        _read_first_playback_chunk(io.BytesIO(b""), process, min_bytes=4096)
+
+
+def test_read_first_playback_chunk_waits_for_readiness_on_posix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(youtube_module.os, "name", "posix")
+    stream = io.BytesIO(b"a" * 32)
+    readiness: list[tuple[list[object], list[object], list[object]]] = [
+        ([], [], []),
+        ([stream], [], []),
+    ]
+    monkeypatch.setattr(
+        youtube_module.select,
+        "select",
+        lambda *args, **kwargs: readiness.pop(0) if readiness else ([stream], [], []),
+    )
+    process = _FakeProcess()
+
+    data = _read_first_playback_chunk(stream, process, min_bytes=16)
+
+    assert data == b"a" * 32
+
+
+def test_read_first_playback_chunk_breaks_when_unready_process_has_exited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(youtube_module.os, "name", "posix")
+    monkeypatch.setattr(youtube_module.select, "select", lambda *a, **k: ([], [], []))
+    process = _FakeProcess(poll_results=[1])
+
+    with pytest.raises(SourceError):
+        _read_first_playback_chunk(io.BytesIO(b""), process, min_bytes=16)
+
+
+class _FakeFFmpeg:
+    def __init__(self, source: object = None, **kwargs: object) -> None:
+        self.source = source
+        self.kwargs = kwargs
+        self.cleaned = False
+
+    def read(self) -> bytes:
+        return b"pcm"
+
+    def is_opus(self) -> bool:
+        return False
+
+    def cleanup(self) -> None:
+        self.cleaned = True
+
+
+def test_managed_pipe_source_delegates_reads_to_ffmpeg() -> None:
+    ffmpeg = _FakeFFmpeg()
+    source = _ManagedPipeSource(cast(Any, _FakeProcess()), cast(Any, ffmpeg))
+
+    assert source.read() == b"pcm"
+    assert source.is_opus() is False
+
+
+def test_managed_pipe_source_cleanup_kills_a_running_ytdlp() -> None:
+    ffmpeg = _FakeFFmpeg()
+    process = _FakeProcess(poll_results=[None])
+    source = _ManagedPipeSource(cast(Any, process), cast(Any, ffmpeg))
+
+    source.cleanup()
+
+    assert ffmpeg.cleaned is True
+    assert process.kill_calls == 1
+    assert process.wait_calls == 1
+
+
+def test_managed_pipe_source_cleanup_kills_again_when_wait_times_out() -> None:
+    process = _FakeProcess(poll_results=[0], wait_raises=True)
+    source = _ManagedPipeSource(cast(Any, process), cast(Any, _FakeFFmpeg()))
+
+    source.cleanup()
+
+    assert process.kill_calls == 1
+
+
+def test_managed_pipe_source_cleanup_logs_stderr_when_ytdlp_failed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    process = _FakeProcess(
+        stderr=io.BytesIO(b"ERROR: sign in to confirm\n"),
+        poll_results=[2],
+        returncode=2,
+    )
+    source = _ManagedPipeSource(cast(Any, process), cast(Any, _FakeFFmpeg()))
+
+    with caplog.at_level(logging.WARNING, logger="cadence.sources.youtube"):
+        source.cleanup()
+
+    assert "sign in to confirm" in caplog.text
+
+
+def test_managed_pipe_source_cleanup_stays_quiet_on_clean_exit(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    process = _FakeProcess(stderr=io.BytesIO(b""), poll_results=[0], returncode=0)
+    source = _ManagedPipeSource(cast(Any, process), cast(Any, _FakeFFmpeg()))
+
+    with caplog.at_level(logging.WARNING, logger="cadence.sources.youtube"):
+        source.cleanup()
+
+    assert caplog.text == ""
+
+
+def test_make_playback_source_pipes_ytdlp_stdout_into_ffmpeg(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(youtube_module.os, "name", "nt")
+    process = _FakeProcess(stdout=io.BytesIO(b"a" * 16_384))
+    commands: list[list[str]] = []
+
+    def fake_popen(cmd: list[str], **kwargs: object) -> _FakeProcess:
+        commands.append(cmd)
+        return process
+
+    transformed: dict[str, object] = {}
+
+    class FakePCMVolumeTransformer:
+        def __init__(self, raw: object, *, volume: float) -> None:
+            transformed["raw"] = raw
+            transformed["volume"] = volume
+
+    monkeypatch.setattr(youtube_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(youtube_module.discord, "FFmpegPCMAudio", _FakeFFmpeg)
+    monkeypatch.setattr(youtube_module.discord, "PCMVolumeTransformer", FakePCMVolumeTransformer)
+
+    result = make_playback_source("https://youtu.be/abc", 60)
+
+    assert isinstance(result, FakePCMVolumeTransformer)
+    assert transformed["volume"] == 0.6
+    assert isinstance(transformed["raw"], _ManagedPipeSource)
+    assert commands[0][-1] == "https://youtu.be/abc"
+
+
+def test_make_playback_source_raises_without_a_stdout_pipe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        youtube_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: _FakeProcess(stdout=None),
+    )
+
+    with pytest.raises(SourceError, match="missing stdout pipe"):
+        make_playback_source("https://youtu.be/abc", 50)

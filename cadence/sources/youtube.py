@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, TypedDict, cast
 
 import discord
-import yt_dlp  # type: ignore[import-untyped]
+import yt_dlp
 from yt_dlp.networking.impersonate import ImpersonateTarget
 
 from cadence.interfaces import ResolvedTrack
@@ -173,7 +173,7 @@ def _extract(ytdl: yt_dlp.YoutubeDL, query: str, *, search: bool) -> ResolvedTra
     return _to_resolved(_unwrap_entry(info))
 
 
-def _is_bot_block(exc: Exception) -> bool:
+def _is_bot_block(exc: BaseException) -> bool:
     text = str(exc).casefold()
     return "sign in" in text or "not a bot" in text
 
@@ -370,11 +370,11 @@ def make_playback_source(
     if ytdl_process.stdout is None:
         msg = "yt-dlp playback process missing stdout pipe"
         raise SourceError(msg)
-    stdout = io.BufferedReader(ytdl_process.stdout)
+    stdout = io.BufferedReader(cast(io.RawIOBase, ytdl_process.stdout))
     prefix = _read_first_playback_chunk(stdout, ytdl_process)
     prefixed_stdout = _PrefixedReader(stdout, prefix)
     ffmpeg_source = discord.FFmpegPCMAudio(
-        prefixed_stdout,
+        cast(io.BufferedIOBase, prefixed_stdout),
         pipe=True,
         **FFMPEG_PIPE_OPTS,
     )

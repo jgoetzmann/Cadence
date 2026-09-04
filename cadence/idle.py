@@ -88,7 +88,7 @@ class IdleManager:
         if voice_client is None or voice_client.channel is None:
             return
 
-        channel = voice_client.channel
+        channel = cast(discord.VoiceChannel | discord.StageChannel, voice_client.channel)
         if before.channel != channel and after.channel != channel:
             return
 
@@ -105,12 +105,11 @@ class IdleManager:
         if self._player is None:
             return
         now = self._monotonic()
-        for voice_client in list(self._client.voice_clients):
+        for protocol in list(self._client.voice_clients):
+            voice_client = cast(discord.VoiceClient, protocol)
             guild = voice_client.guild
             state = self._store.get(guild.id)
-            if await self._should_disconnect(
-                state, cast(discord.VoiceClient, voice_client), now
-            ):
+            if await self._should_disconnect(state, voice_client, now):
                 log.info("Idle timeout reached for guild %s; disconnecting", guild.id)
                 await self._player.stop(guild)
 
@@ -146,5 +145,5 @@ class IdleManager:
         return voice_client.is_playing() or voice_client.is_paused()
 
     @staticmethod
-    def _human_count(channel: discord.VoiceChannel) -> int:
+    def _human_count(channel: discord.VoiceChannel | discord.StageChannel) -> int:
         return sum(1 for member in channel.members if not member.bot)
