@@ -53,6 +53,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# The suite imports `tests.fakes`, so the repo root must be importable whether
+# pytest is run as `pytest` or `python -m pytest`.
+pythonpath = ["."]
 addopts = "--cov=cadence --cov-report=term-missing"
 
 [tool.coverage.run]
